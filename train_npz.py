@@ -36,7 +36,7 @@ from vggt.utils.visualization import vis_depth_map
 torch.backends.cudnn.benchmark = True  # 启用cuDNN自动调优
 
 # 设置环境变量
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7,8"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7"
 
 # 配置参数
 class TrainingConfig:
@@ -108,7 +108,7 @@ class TrainingConfig:
     # 训练参数
     lr = 1e-5 * sqrt(gpus_num)
     epochs = 1000
-    weight_decay = lr // 10
+    weight_decay = lr / 10
     warmup_epochs = 5 if load_VGGT else 1
     save_interval = epochs // 100
     val_interval = epochs // 100
@@ -131,7 +131,7 @@ class TrainingConfig:
     distill_depth_loss_activate = True  # 是否使用深度蒸馏损失
     render_loss_activate = True  # 是否使用渲染损失
     mask_loss_activate = True  # 是否使用掩膜损失
-    color_dist_loss_activate = False  # 是否使用高斯球颜色分配损失
+    color_dist_loss_activate = True  # 是否使用高斯球颜色分配损失
     foreground_region_loss_activate = False  # 是否使用前景范围损失
     depth_consist_loss_activate = False  # 是否使用深度一致性损失
     distill_geo_loss_activate = False  # 是否使用几何蒸馏损失
@@ -528,9 +528,9 @@ class MultiTaskLoss(nn.Module):
         else:
             camera_loss = torch.tensor(0.0, device=preds["masks"].device)
         
-        if camera_loss.item() > 2e-4:  # 避免姿态编码损失过大影响训练稳定性
-            camera_w = 1e3
-            return camera_loss * camera_w, {"camera": camera_loss.item() * camera_w}
+        # if camera_loss.item() > 2e-4:  # 避免姿态编码损失过大影响训练稳定性
+        #     camera_w = 1e3
+        #     return camera_loss * camera_w, {"camera": camera_loss.item() * camera_w}
 
         # 渲染损失
         if config.render_loss_activate:
@@ -796,7 +796,7 @@ def forward_render_and_loss(model, targets, criterion, config, epoch, device, wi
     return batch_loss, loss_components, rendered_images, render_depths, preds, targets
 
 
-def train_epoch(model, loader, optimizer, scaler, criterion, config, epoch, sampler, rank):
+def train_epoch(model, loader, optimizer, scaler, criterion, config, epoch, sampler, rank, writer=None):
     """单个训练epoch"""
     model.train()
     sampler.set_epoch(epoch)  # 设置采样器epoch
@@ -870,6 +870,14 @@ def train_epoch(model, loader, optimizer, scaler, criterion, config, epoch, samp
         total_loss += value_loss
         for k in metric_logger:
             metric_logger[k] += loss_components.get(k, 0.0)  # 处理可能缺失的指标
+
+        # 每个iter写入TensorBoard（仅主进程）
+        if rank == 0 and writer is not None:
+            global_step = (epoch - 1) * len(loader) + batch_idx
+            writer.add_scalar('Iter/Loss/total', value_loss, global_step)
+            writer.add_scalar('Iter/Learning Rate', optimizer.param_groups[0]['lr'], global_step)
+            for metric_name, metric_value in loss_components.items():
+                writer.add_scalar(f'Iter/Loss/{metric_name}', metric_value, global_step)
 
         # 优化日志输出（只在主进程）
         if rank == 0 and batch_idx % 10 == 0:
@@ -996,8 +1004,12 @@ def main_worker(rank, world_size, config):
     """分布式训练工作函数"""
     # 初始化分布式环境
     setup(rank, world_size)
+    
+    torch.random.manual_seed(100019 + rank)
+    numpy.random.seed(100019 + rank)
 
     # 只在主进程初始化TensorBoard
+    writer = None
     if rank == 0:
         project_root = os.path.dirname(os.path.abspath(__file__))
         tb_log_dir = os.path.join(project_root, 'runs', 'multi_frame')
@@ -1037,7 +1049,7 @@ def main_worker(rank, world_size, config):
 
         # 训练阶段
         train_loss, train_metrics = train_epoch(
-            model, train_loader, optimizer, scaler, criterion, config, epoch, train_sampler, rank
+            model, train_loader, optimizer, scaler, criterion, config, epoch, train_sampler, rank, writer
         )
 
         # 验证阶段（所有进程参与，主进程记录）
@@ -1121,6 +1133,4 @@ def main():
 
 
 if __name__ == "__main__":
-    torch.random.manual_seed(100019)
-    numpy.random.seed(100019)
     main()

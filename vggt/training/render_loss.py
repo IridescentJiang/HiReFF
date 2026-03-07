@@ -78,7 +78,7 @@ class GradientInjector(Function):
     @staticmethod
     def forward(ctx, x, grad_x):
         ctx.save_for_backward(grad_x)
-        return x
+        return x.clone()
 
     @staticmethod
     def backward(ctx, grad_output):
@@ -147,6 +147,7 @@ class RenderLoss(nn.Module):
         grad_container = torch.zeros_like(images)
         total_loss = torch.tensor(0.0, device=images.device, dtype=torch.float32)
         valid_count = 0
+        grad_clip_value = 1.0
 
         for i in range(images.shape[0]):
             mask_i = masks[i:i + 1]
@@ -167,7 +168,13 @@ class RenderLoss(nn.Module):
                     border=border,
                 ).mean()
 
+            if not torch.isfinite(loss_i):
+                del image_i, target_i, loss_i
+                continue
+
             grad_i = torch.autograd.grad(loss_i, image_i, retain_graph=False, create_graph=False)[0]
+            grad_i = torch.nan_to_num(grad_i, nan=0.0, posinf=grad_clip_value, neginf=-grad_clip_value)
+            grad_i = grad_i.clamp(min=-grad_clip_value, max=grad_clip_value)
             grad_container[i:i + 1] = grad_i
             total_loss = total_loss + loss_i.detach().float()
             valid_count += 1
@@ -179,6 +186,9 @@ class RenderLoss(nn.Module):
             grad_container = grad_container / float(valid_count)
         else:
             avg_loss = torch.tensor(0.0, device=images.device, dtype=torch.float32)
+
+        avg_loss = torch.nan_to_num(avg_loss, nan=0.0, posinf=100.0, neginf=0.0)
+        grad_container = torch.nan_to_num(grad_container, nan=0.0, posinf=grad_clip_value, neginf=-grad_clip_value)
 
         images_surgeried = GradientInjector.apply(images, grad_container * lambda_perceptual)
         return avg_loss, images_surgeried
@@ -232,8 +242,10 @@ class RenderLoss(nn.Module):
             weighted_l1 = (l1_loss_map * weights).mean()
         else:
             weighted_l1 = l1_loss_map.mean()
+        weighted_l1 = torch.nan_to_num(weighted_l1, nan=0.0, posinf=100.0, neginf=0.0)
         losses['l1'] = weighted_l1.item()
 
         total_loss = weighted_l1 * self.lambda_l1 + loss_lpips.detach() * self.lambda_perceptual
+        total_loss = torch.nan_to_num(total_loss, nan=0.0, posinf=100.0, neginf=0.0)
 
         return total_loss, losses
