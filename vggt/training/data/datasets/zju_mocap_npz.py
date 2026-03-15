@@ -346,7 +346,7 @@ class ZjuMocapDatasetNpz(Dataset):
 		return different_combinations if different_combinations else valid_combinations
 
 	def __len__(self):
-		return len(self.samples) * 10000
+		return len(self.samples)
 
 	def __getitem__(self, idx):
 		sample = self.samples[idx % len(self.samples)]

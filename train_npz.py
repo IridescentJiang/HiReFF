@@ -64,7 +64,7 @@ class TrainingConfig:
     mix_dataset_weights = {"dna": 0.45, "zju": 0.1, "mvhuman": 0.45}  # weighted模式下权重
     mix_weighted_target_total = None  # weighted模式总采样量，None表示使用当前总样本数
 
-    data_root_prefix = "/ai/beihang/data/overfitting/"
+    data_root_prefix = "/ai/beihang/data/full_training/"
     dna_data_root = f"{data_root_prefix}/dna-rendering"
     zju_data_root = f"{data_root_prefix}/zju-mocap"
     mvhuman_data_root = f"{data_root_prefix}/mvhuman"
@@ -88,7 +88,7 @@ class TrainingConfig:
     num_workers = 4
 
     img_size = 518  # Aggregator输入图像大小
-    sr_img_size = 518  # Supplementary head输入图像大小 / 监督渲染损失的图像大小
+    sr_img_size = 2072  # Supplementary head输入图像大小 / 监督渲染损失的图像大小
     lpip_patch_size = 518  # lpip监督patch大小
     random_patch = False  # 是否使用随机patch计算渲染损失，如果为False，则将全图插值到lpip_patch_size大小计算渲染损失
     random_patch_epoch = 1000  # 在第二阶段使用，表示在多少epoch后开始使用随机patch计算渲染损失
@@ -107,7 +107,7 @@ class TrainingConfig:
     # render_mode = "mipsplat"
 
     # 训练参数
-    lr = 2e-6 * sqrt(gpus_num)
+    lr = 1e-5 * sqrt(gpus_num)
     epochs = 10
     weight_decay = lr / 10
     warmup_epochs = 0 if load_VGGT else 0
@@ -476,13 +476,13 @@ def initialize_model(config, rank):
 
     lr_weights = {
         'default': 1.0,
-        'aggregator': 1e-3,
-        'camera': 1e-4,
-        'activate_point_head': 1e-3,
-        'activate_depth_head': 1e-1,
-        'point_offset': 1.0,
+        'aggregator': 1e-1,
+        'camera': 1e-2,
+        # 'activate_point_head': 1.0,
+        'activate_depth_head': 1.0,
+        # 'point_offset': 1.0,
         'gs_para': 1.0,
-        'mask': 1.0
+        'mask': 1.0,
     }
 
     optimizer = AdamW(
@@ -686,7 +686,7 @@ class MultiTaskLoss(nn.Module):
             
         render_w = 5.0
         camera_w = 1e2
-        mask_w = 5e-2
+        mask_w = 1e-1
         foreground_region_w = 1e-2
         distill_depth_w = 1e1
         distill_geometry_w = 1e1
@@ -981,7 +981,7 @@ def train_epoch(model, loader, optimizer, scheduler, scaler, criterion, config, 
             )
 
         # 优化日志输出（只在主进程）
-        if rank == 0 and batch_idx % 1 == 0:
+        if rank == 0 and batch_idx % 10 == 0:
             log_msg = f"Epoch {epoch} | Batch {batch_idx}/{len(loader)}"
             log_msg += f" | Loss: {value_loss:.4f}"
             if isinstance(loss_components, dict):

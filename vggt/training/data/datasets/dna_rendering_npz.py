@@ -319,7 +319,7 @@ class DnaRenderingDatasetNpz(Dataset):
 
     def __len__(self):
         """返回数据集的大小"""
-        return len(self.samples) * 10000
+        return len(self.samples)
 
     def __getitem__(self, idx):
         """根据索引获取样本"""
