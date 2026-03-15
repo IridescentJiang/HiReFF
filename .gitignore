@@ -2,6 +2,7 @@
 .idea/
 output/
 checkpoints/
+pretrained/
 ckpt/
 dependency/
 tmp/

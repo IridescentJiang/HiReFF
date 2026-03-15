@@ -1,10 +1,13 @@
 import os
 import os.path as osp
+import json
+import zipfile
 import numpy as np
 import random
 import re
 import logging
 import torch
+import torch.distributed as dist
 import itertools
 import torchvision
 from glob import glob
@@ -111,30 +114,30 @@ class DnaRenderingDatasetNpz(Dataset):
         self.supervise_view_groups = None
         self.n_views_supervise = n_views_supervise  # 选取N对视角对进行监督
         self.target_size = target_size
-        # self.origin_width = 2048
-        # self.origin_height = 2048
+        self.origin_width = 2048
+        self.origin_height = 2048
 
         # 初始化视角组 (1-48步长6取8个，分为4组)
         base_views = list(range(1, 48, 3))
         self.view_groups = [
             [f"{v:02d}" for v in base_views[::4][:4]],  # 1, 13, 25, 37
-            [f"{v:02d}" for v in base_views[1::4][:4]],
-            [f"{v:02d}" for v in base_views[2::4][:4]],
-            [f"{v:02d}" for v in base_views[3::4][:4]],
+            [f"{v:02d}" for v in base_views[1::4][:4]], # 4, 16, 28, 40
+            [f"{v:02d}" for v in base_views[2::4][:4]], # 7, 19, 31, 43
+            [f"{v:02d}" for v in base_views[3::4][:4]], # 10, 22, 34, 46
         ]
 
-        if self.n_views_supervise > 0:
-            # 生成随机监督视角组
-            base_views = list(range(0, 24))
-            all_combinations = list(itertools.combinations(base_views, self.n_views_supervise))
-            valid_combinations = [combo for combo in all_combinations if
-                                  len(combo) == 1 or max(combo) - min(combo) >= 3]
+        # if self.n_views_supervise > 0:
+        #     # 生成随机监督视角组
+        #     base_views = list(range(0, 24))
+        #     all_combinations = list(itertools.combinations(base_views, self.n_views_supervise))
+        #     valid_combinations = [combo for combo in all_combinations if
+        #                           len(combo) == 1 or max(combo) - min(combo) >= 3]
 
-            self.supervise_view_groups = []
-            for combo in valid_combinations:
-                relative_combo = [v + 24 for v in combo]
-                group = [f"{v:02d}" for v in combo] + [f"{v:02d}" for v in relative_combo]
-                self.supervise_view_groups.append(group)
+        #     self.supervise_view_groups = []
+        #     for combo in valid_combinations:
+        #         relative_combo = [v + 24 for v in combo]
+        #         group = [f"{v:02d}" for v in combo] + [f"{v:02d}" for v in relative_combo]
+        #         self.supervise_view_groups.append(group)
 
         # 发现所有有效序列和帧
         self._discover_samples(min_frames)
@@ -153,60 +156,161 @@ class DnaRenderingDatasetNpz(Dataset):
 
         logging.info(f"Loaded {len(self.samples)} valid samples for {split}")
 
-    # def _discover_samples(self, min_frames):
-    #     """发现所有有效的序列和帧组合"""
-    #     self.samples = []  # 重置样本列表
+    @staticmethod
+    def _dist_rank_world() -> tuple[int, int]:
+        if dist.is_available() and dist.is_initialized():
+            return dist.get_rank(), dist.get_world_size()
+        return 0, 1
 
-    #     for seq_dir in sorted(os.listdir(self.data_root)):
-    #         if not re.match(r"^\d{4}_\d{2}$", seq_dir):
-    #             continue
+    def _discover_samples_check(self, min_frames):
+        """发现所有有效的序列和帧组合"""
+        rank, world_size = self._dist_rank_world()
+        local_samples = []
 
-    #         seq_path = osp.join(self.data_root, seq_dir)
-    #         logging.debug(f"Processing sequence: {seq_dir}")
+        seq_dirs = [
+            seq_dir
+            for seq_dir in sorted(os.listdir(self.data_root))
+            if re.match(r"^\d{4}_\d{2}$", seq_dir)
+        ]
 
-    #         if self.frame_numbers:
-    #             frame_numbers = self.frame_numbers
-    #         else:
-    #             frame_numbers = sorted([
-    #                 int(f.split("_")[1].split(".")[0])
-    #                 for f in os.listdir(seq_path)
-    #                 if f.startswith("frame_") and f.endswith(".npz")
-    #             ])
+        # 多卡下按序列分片，避免每个进程重复遍历全部数据。
+        if world_size > 1:
+            seq_dirs = seq_dirs[rank::world_size]
 
-    #         # 验证帧完整性
-    #         valid_frames = []
-    #         key_list = ["mask", "image", "intrinsic", "extrinsic"]
-    #         for frame in frame_numbers:
-    #             valid = True
-    #             npz_path = osp.join(seq_path, f"frame_{int(frame):04d}.npz")
-    #             # 检查所有必须的视角组
-    #             with np.load(npz_path, allow_pickle=True) as archive:
-    #                 for view_group in self.view_groups:
-    #                     for view in view_group:
-    #                         data_key = f"view_{int(view):02d}"
-    #                         if data_key not in archive:
-    #                             raise KeyError(f"{data_key} not found in {npz_path}.")
-    #                         entry = archive[data_key].item()
-    #                         # 验证entry里的key_list
-    #                         if any(entry.get(key, None) is None for key in key_list):
-    #                             valid = False
-    #                             break
-    #                         if not valid: break
-    #                     if not valid: break
-    #                 if not valid: break
+        for seq_dir in seq_dirs:
 
-    #             if valid:
-    #                 valid_frames.append(frame)
+            seq_path = osp.join(self.data_root, seq_dir)
+            logging.debug(f"Processing sequence: {seq_dir}")
 
-    #         # 记录有效帧
-    #         if len(valid_frames) >= min_frames:
-    #             for frame in valid_frames:
-    #                 self.samples.append({
-    #                     "seq_dir": seq_dir,
-    #                     "frame": frame,
-    #                 })
+            cached_valid_frames = self._try_load_valid_frames_cache(seq_path, min_frames)
+            if cached_valid_frames is not None:
+                if len(cached_valid_frames) >= min_frames:
+                    for frame in cached_valid_frames:
+                        local_samples.append({
+                            "seq_dir": seq_dir,
+                            "frame": frame,
+                        })
+                continue
 
-    #     logging.info(f"Discovered {len(self.samples)} valid samples")
+            if self.frame_numbers:
+                frame_numbers = self.frame_numbers
+            else:
+                frame_numbers = sorted([
+                    int(f.split("_")[1].split(".")[0])
+                    for f in os.listdir(seq_path)
+                    if f.startswith("frame_") and f.endswith(".npz")
+                ])
+
+            # 验证帧完整性
+            valid_frames = []
+            key_list = ["mask", "image", "intrinsic", "extrinsic"]
+            for frame in frame_numbers:
+                valid = True
+                npz_path = osp.join(seq_path, f"frame_{int(frame):04d}.npz")
+                if not osp.exists(npz_path):
+                    continue
+                # 检查所有必须的视角组
+                try:
+                    with np.load(npz_path, allow_pickle=True) as archive:
+                        for view_group in self.view_groups:
+                            for view in range(1, 48, 1):
+                                data_key = f"view_{int(view):02d}"
+                                if data_key not in archive:
+                                    valid = False
+                                    break
+                                entry = archive[data_key].item()
+                                # 验证entry里的key_list
+                                if any(entry.get(key, None) is None for key in key_list):
+                                    valid = False
+                                    break
+                                if not valid:
+                                    break
+                            if not valid:
+                                break
+                        if not valid:
+                            break
+                except (zipfile.BadZipFile, OSError, ValueError, EOFError):
+                    logging.warning("Skip broken npz file: %s", npz_path)
+                    valid = False
+
+                if valid:
+                    valid_frames.append(frame)
+                else:
+                    print(f"Invalid frame {frame} in sequence {seq_dir} due to missing/broken data.")
+                    logging.debug("Invalid frame %s in sequence %s due to missing/broken data.", frame, seq_dir)
+
+            print(f"Rank {rank}: Valid sequence {seq_dir} at {seq_path}")
+
+            # 记录有效帧
+            if len(valid_frames) >= min_frames:
+                self._save_valid_frames_cache(seq_path, min_frames, valid_frames)
+                for frame in valid_frames:
+                    local_samples.append({
+                        "seq_dir": seq_dir,
+                        "frame": frame,
+                    })
+
+        if world_size > 1:
+            gathered_samples = [None for _ in range(world_size)]
+            dist.all_gather_object(gathered_samples, local_samples)
+            self.samples = []
+            for part in gathered_samples:
+                self.samples.extend(part)
+            self.samples.sort(key=lambda x: (x["seq_dir"], x["frame"]))
+        else:
+            self.samples = local_samples
+
+        logging.info(
+            f"Discovered {len(self.samples)} valid samples "
+            f"(rank {rank}/{world_size}, local {len(local_samples)})"
+        )
+
+    def _validation_cache_path(self, seq_path: str) -> str:
+        return osp.join(seq_path, ".vggt_dna_valid_frames_cache.json")
+
+    def _validation_cache_key(self, min_frames: int) -> dict:
+        return {
+            "version": 1,
+            "min_frames": int(min_frames),
+            "frame_numbers": self.frame_numbers,
+            "n_views_supervise": int(self.n_views_supervise),
+        }
+
+    def _try_load_valid_frames_cache(self, seq_path: str, min_frames: int) -> list[int] | None:
+        cache_path = self._validation_cache_path(seq_path)
+        if not osp.exists(cache_path):
+            return None
+
+        try:
+            with open(cache_path, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+        except Exception:
+            return None
+
+        if payload.get("cache_key") != self._validation_cache_key(min_frames):
+            return None
+
+        valid_frames = payload.get("valid_frames")
+        if not isinstance(valid_frames, list):
+            return None
+
+        return [int(frame) for frame in valid_frames]
+
+    def _save_valid_frames_cache(self, seq_path: str, min_frames: int, valid_frames: list[int]):
+        cache_path = self._validation_cache_path(seq_path)
+        payload = {
+            "cache_key": self._validation_cache_key(min_frames),
+            "valid_frames": [int(frame) for frame in sorted(valid_frames)],
+        }
+        tmp_path = f"{cache_path}.tmp"
+        try:
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=True)
+            os.replace(tmp_path, cache_path)
+        except Exception:
+            logging.exception("Failed to write validation cache: %s", cache_path)
+            if osp.exists(tmp_path):
+                os.remove(tmp_path)
     
     def _discover_samples(self, min_frames):
         self.samples = glob(f"{self.data_root}/**/frame*.npz", recursive=True)
@@ -215,7 +319,7 @@ class DnaRenderingDatasetNpz(Dataset):
 
     def __len__(self):
         """返回数据集的大小"""
-        return len(self.samples) * 20
+        return len(self.samples) * 10000
 
     def __getitem__(self, idx):
         """根据索引获取样本"""
@@ -233,7 +337,7 @@ class DnaRenderingDatasetNpz(Dataset):
 
         image_bytes, masks, intrinsics, extrinsics = read_dna_npz_entry(npz_path, view_group)
         
-        intrinsics[:, :2] *= (self.target_size / self.sr_target_size)
+        intrinsics[:, :2] *= (self.target_size / self.origin_width)
         
         base_c2w = torch.linalg.inv(extrinsics[0])
         extrinsics = [extrinsics[_idx] @ base_c2w for _idx in range(extrinsics.shape[0])]
@@ -250,6 +354,7 @@ class DnaRenderingDatasetNpz(Dataset):
         if True:
             # view_group_supervise = random.choice(self.supervise_view_groups)
             # random.shuffle(view_group_supervise)
+            EXCLUDE_VIEWS = {24, 42}
             view_group_supervise = []
             _n = len(view_group)
             for _idx in range(_n):
@@ -257,15 +362,20 @@ class DnaRenderingDatasetNpz(Dataset):
                 _v2 = view_group_copy[(_idx + 1) % _n] // 3
                 if _v1 > _v2:
                     _v2 = _v2 + 16
-                _novel = random.randint(_v1+1, _v2-1) * 3
-                _novel = _novel + random.randint(-1, 1)
-                view_group_supervise.append(_novel % 48)
+                    
+                # 排除视角24和42（即view_24和view_42），这些视角可能存在异常
+                _novel = 24
+                while _novel in EXCLUDE_VIEWS:
+                    _novel = random.randint(_v1+1, _v2-1) * 3
+                    _novel = _novel + random.randint(-1, 1)
+                    _novel = _novel % 48
+                view_group_supervise.append(_novel)
             # print(view_group_copy, view_group_supervise)
             random.shuffle(view_group_supervise)
 
             sv_image_bytes, sv_masks, sv_intrinsics, sv_extrinsics = read_dna_npz_entry(npz_path, [int(v) for v in view_group_supervise])
 
-            sv_intrinsics[:, :2] *= (self.target_size / self.sr_target_size)
+            sv_intrinsics[:, :2] *= (self.target_size / self.origin_width)
 
             sv_extrinsics = [sv_extrinsics[_idx] @ base_c2w for _idx in range(sv_extrinsics.shape[0])]
             sv_extrinsics = torch.stack(sv_extrinsics, dim=0)

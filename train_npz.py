@@ -1,6 +1,7 @@
 import os
 import time
 import numpy
+import math
 from math import sqrt
 from tqdm import tqdm
 
@@ -22,7 +23,7 @@ from torch.utils.data import Subset
 from einops import rearrange
 
 from vggt.models.vggt import VGGT
-from vggt.models.vggt_origin import VGGT as VGGT_Ori
+# from vggt.models.vggt_origin import VGGT as VGGT_Ori
 from vggt.training.data.datasets.dna_rendering_npz import DnaRenderingDatasetNpz, dna_collate_fn
 from vggt.training.data.datasets.zju_mocap_npz import ZjuMocapDatasetNpz
 from vggt.training.data.datasets.mvhuman_npz import MvHumanDatasetNpz
@@ -54,13 +55,13 @@ class TrainingConfig:
         frame_numbers = frame_numbers * int(100 // len(frame_numbers))  # 重复以增加数据量
 
     dataset_mode = "mix"  # single or mix
-    single_dataset = "dna"  # dna or zju or mvhuman
+    single_dataset = "mvhuman"  # dna or zju or mvhuman
     mix_datasets = ["dna", "zju", "mvhuman"]
     mix_balance = True  # 是否对mix模式下各子数据集做均衡采样
-    mix_balance_mode = "upsample"  # downsample or upsample or weighted
+    mix_balance_mode = "weighted"  # downsample or upsample or weighted
     mix_balance_seed = 42
     mix_balance_val = True  # 是否对验证集也做均衡
-    mix_dataset_weights = {"dna": 1.0, "zju": 1.0, "mvhuman": 1.0}  # weighted模式下权重
+    mix_dataset_weights = {"dna": 0.45, "zju": 0.1, "mvhuman": 0.45}  # weighted模式下权重
     mix_weighted_target_total = None  # weighted模式总采样量，None表示使用当前总样本数
 
     data_root_prefix = "/ai/beihang/data/overfitting/"
@@ -87,7 +88,7 @@ class TrainingConfig:
     num_workers = 4
 
     img_size = 518  # Aggregator输入图像大小
-    sr_img_size = 2072  # Supplementary head输入图像大小 / 监督渲染损失的图像大小
+    sr_img_size = 518  # Supplementary head输入图像大小 / 监督渲染损失的图像大小
     lpip_patch_size = 518  # lpip监督patch大小
     random_patch = False  # 是否使用随机patch计算渲染损失，如果为False，则将全图插值到lpip_patch_size大小计算渲染损失
     random_patch_epoch = 1000  # 在第二阶段使用，表示在多少epoch后开始使用随机patch计算渲染损失
@@ -95,9 +96,9 @@ class TrainingConfig:
     multiview_supervise = 2  # 是否使用多视图监督，0表示不使用，N表示使用N对视图
 
     # 模型参数
-    load_VGGT = True  # True 加载 VGGT 模型，False 加载 checkpoint
+    load_VGGT = True  # True 加载 VGGT 模型， False 加载 checkpoint
     model_name = "facebook/VGGT-1B"
-    checkpoint = "checkpoints/best_model_epoch_42_loss_0.1249.pt"
+    checkpoint = "pretrained/best_model_epoch_5_loss_0.2091.pt"
     # checkpoint = None
     only_load_mask_head = False  # 是否加载 mask_head
 
@@ -106,12 +107,13 @@ class TrainingConfig:
     # render_mode = "mipsplat"
 
     # 训练参数
-    lr = 1e-5 * sqrt(gpus_num)
-    epochs = 1000
+    lr = 2e-6 * sqrt(gpus_num)
+    epochs = 10
     weight_decay = lr / 10
-    warmup_epochs = 5 if load_VGGT else 1
-    save_interval = epochs // 100
-    val_interval = epochs // 100
+    warmup_epochs = 0 if load_VGGT else 0
+    save_interval = epochs // 10
+    val_interval = epochs // 10
+    iter_save_interval = 2000  # 0表示关闭；>0表示每N个iter保存一次checkpoint
 
     # 数据采样
     data_sample_rate = None  # None or n, 均匀抽取1/n数据进行训练
@@ -124,7 +126,7 @@ class TrainingConfig:
     mask_head_activate = True  # 是否激活 mask_head
 
     # mask使用策略
-    use_gt_mask_until_epoch = 50  # <=该epoch使用GT mask，之后使用预测mask
+    use_gt_mask_until_epoch = 20  # <=该epoch使用GT mask，之后使用预测mask
 
     # Loss 激活情况
     camera_loss_activate = True  # 是否使用姿态编码损失
@@ -136,9 +138,13 @@ class TrainingConfig:
     depth_consist_loss_activate = False  # 是否使用深度一致性损失
     distill_geo_loss_activate = False  # 是否使用几何蒸馏损失
 
+    # camera loss 稳定化参数（用于抑制单batch尖峰）
+    camera_loss_max_for_backward = 1e-2  # 对raw camera loss做上限裁剪；None表示不裁剪
+
     # 设备配置
     amp_enabled = True  # 自动混合精度
     grad_clip = 1.0  # 梯度裁剪
+    reset_optimizer_lrs_on_resume = True  # 从checkpoint恢复optimizer后，是否按当前配置重置各参数组lr
 
 
 def setup(rank, world_size):
@@ -405,9 +411,11 @@ def initialize_model(config, rank):
     model = VGGT.from_pretrained(config.model_name, local_files_only=True) if config.load_VGGT else VGGT.from_checkpoint(config.checkpoint)
     model = model.to(rank)
 
-    if config.checkpoint and config.only_load_mask_head:
+    checkpoint = None
+    if config.checkpoint and os.path.isfile(config.checkpoint):
         checkpoint = torch.load(config.checkpoint, map_location='cpu')
 
+    if checkpoint is not None and config.only_load_mask_head:
         checkpoint_state = checkpoint["model_state"]
 
         mask_head_dict = {}
@@ -468,8 +476,8 @@ def initialize_model(config, rank):
 
     lr_weights = {
         'default': 1.0,
-        'aggregator': 1e-4,
-        'camera': 1e-5,
+        'aggregator': 1e-3,
+        'camera': 1e-4,
         'activate_point_head': 1e-3,
         'activate_depth_head': 1e-1,
         'point_offset': 1.0,
@@ -479,24 +487,96 @@ def initialize_model(config, rank):
 
     optimizer = AdamW(
         [
-            {"params": model.aggregator.parameters(), "lr": config.lr * lr_weights["aggregator"]},
-            {"params": model.camera_head.parameters(), "lr": config.lr * lr_weights["camera"]},
-            {"params": model.activate_depth_head.parameters(), "lr": config.lr * lr_weights["activate_depth_head"]},
+            {"params": model.aggregator.parameters(), "lr": config.lr * lr_weights["aggregator"], "name": "aggregator"},
+            {"params": model.camera_head.parameters(), "lr": config.lr * lr_weights["camera"], "name": "camera"},
+            {"params": model.activate_depth_head.parameters(), "lr": config.lr * lr_weights["activate_depth_head"], "name": "activate_depth_head"},
             # {"params": model.point_offset_head.parameters(), "lr": config.lr * lr_weights["point_offset"]},
-            {"params": model.gs_para_head.parameters(), "lr": config.lr * lr_weights["gs_para"]},
-            {"params": model.mask_head.parameters(), "lr": config.lr * lr_weights["mask"]},
+            {"params": model.gs_para_head.parameters(), "lr": config.lr * lr_weights["gs_para"], "name": "gs_para"},
+            {"params": model.mask_head.parameters(), "lr": config.lr * lr_weights["mask"], "name": "mask"},
         ],
         weight_decay=config.weight_decay
     )
 
-    scheduler = CosineAnnealingLR(
+    def apply_group_lrs_from_config():
+        for group in optimizer.param_groups:
+            group_name = group.get("name", "default")
+            lr_scale = lr_weights.get(group_name, lr_weights["default"])
+            target_lr = config.lr * lr_scale
+            group["lr"] = target_lr
+            group["initial_lr"] = target_lr
+
+    apply_group_lrs_from_config()
+
+    T_total = config.epochs - config.warmup_epochs  # 总退火步数
+
+    def lr_lambda(epoch):
+        current_step = epoch - config.warmup_epochs
+        # warmup阶段（你当前设为0，可直接跳过）
+        if current_step < 0:
+            return max(0.0, current_step / config.warmup_epochs) if config.warmup_epochs > 0 else 1.0
+        # 超过总步数，保持最小LR
+        if current_step >= T_total:
+            return 0.5
+        # 标准余弦退火：从1.0平滑降到0.5
+        return 0.5 * (1.0 + math.cos(math.pi * current_step / T_total))
+
+    # 5. 初始化Scheduler
+    scheduler = torch.optim.lr_scheduler.LambdaLR(
         optimizer,
-        T_max=config.epochs - config.warmup_epochs,
-        eta_min=config.lr * 0.5
+        lr_lambda=lr_lambda,
+        last_epoch=-1  # 从头训练设为-1，断点续训设为对应epoch数
     )
 
     scaler = GradScaler(enabled=config.amp_enabled)
-    return model, optimizer, scheduler, scaler
+
+    resume_epoch = 0
+    # 仅当 load_VGGT=False（即从checkpoint构建模型）时恢复训练状态
+    should_resume_training_state = not bool(getattr(config, "load_VGGT", True))
+
+    if isinstance(checkpoint, dict) and should_resume_training_state:
+        if "optimizer" in checkpoint:
+            try:
+                optimizer.load_state_dict(checkpoint["optimizer"])
+                if rank == 0:
+                    print(f"Loaded optimizer state from checkpoint: {config.checkpoint}")
+            except Exception as e:
+                if rank == 0:
+                    print(f"Warning: failed to load optimizer state from {config.checkpoint}: {e}")
+        elif rank == 0:
+            print(f"Optimizer state not found in checkpoint: {config.checkpoint}")
+
+        if "scheduler" in checkpoint:
+            try:
+                scheduler.load_state_dict(checkpoint["scheduler"])
+                if rank == 0:
+                    print(f"Loaded scheduler state from checkpoint: {config.checkpoint}")
+            except Exception as e:
+                if rank == 0:
+                    print(f"Warning: failed to load scheduler state from {config.checkpoint}: {e}")
+        elif rank == 0:
+            print(f"Scheduler state not found in checkpoint: {config.checkpoint}")
+
+        if getattr(config, "reset_optimizer_lrs_on_resume", True):
+            apply_group_lrs_from_config()
+            scheduler.base_lrs = [group["lr"] for group in optimizer.param_groups]
+            scheduler._last_lr = [group["lr"] for group in optimizer.param_groups]
+            if rank == 0:
+                print("Reset optimizer/scheduler group lrs from current config after resume.")
+
+        if "epoch" in checkpoint:
+            resume_epoch = int(checkpoint["epoch"])
+    elif isinstance(checkpoint, dict) and rank == 0 and config.checkpoint:
+        print(
+            f"Skip training-state resume from checkpoint: {config.checkpoint} "
+            f"(load_VGGT={getattr(config, 'load_VGGT', True)})"
+        )
+
+    if rank == 0:
+        for idx, group in enumerate(optimizer.param_groups):
+            group_name = group.get("name", f"group_{idx}")
+            print(f"[LR] {group_name}: {group['lr']:.3e}")
+
+    return model, optimizer, scheduler, scaler, resume_epoch
 
 
 class MultiTaskLoss(nn.Module):
@@ -527,10 +607,10 @@ class MultiTaskLoss(nn.Module):
             )
         else:
             camera_loss = torch.tensor(0.0, device=preds["masks"].device)
-        
-        # if camera_loss.item() > 2e-4:  # 避免姿态编码损失过大影响训练稳定性
-        #     camera_w = 1e3
-        #     return camera_loss * camera_w, {"camera": camera_loss.item() * camera_w}
+
+        camera_loss_max = getattr(config, "camera_loss_max_for_backward", None)
+        if camera_loss.item() > camera_loss_max:  # 避免姿态编码损失过大影响训练稳定性
+            return camera_loss * 0.0, {"camera": 0.0}
 
         # 渲染损失
         if config.render_loss_activate:
@@ -538,10 +618,9 @@ class MultiTaskLoss(nn.Module):
                 target_images = target["sr_images"]
             else:
                 target_images = target["images"]
-            
-            render_loss, _ = self.render_loss(
-                images, torch.cat([target["sr_masks"], target["sr_supervise_masks"]], dim=1), target_images
-            )
+
+            combined_masks = torch.cat([target["sr_masks"], target["sr_supervise_masks"]], dim=1)
+            render_loss, _ = self.render_loss(images, combined_masks, target_images)
         else:
             render_loss = torch.tensor(0.0, device=preds["images"].device)
 
@@ -604,8 +683,9 @@ class MultiTaskLoss(nn.Module):
             color_dist = torch.tensor(0.0, device=preds["masks"].device)
 
         # 总损失加权求和
-        camera_w = 1e3
+            
         render_w = 5.0
+        camera_w = 1e2
         mask_w = 5e-2
         foreground_region_w = 1e-2
         distill_depth_w = 1e1
@@ -645,10 +725,12 @@ def preprocess_data(data, lr_size, rank):
     sr_image_list = []
     for image_bytes in data["image_bytes"]:
         for image_byte in image_bytes:
-            img = torchvision.io.decode_jpeg(
-                image_byte, mode=torchvision.io.ImageReadMode.RGB,
-                device=torch.device(device)).float() / 255.0  # (3, H, W)
-            sr_image_list.append(img)
+            decoded = torchvision.io.decode_jpeg(
+                image_byte.detach().to(device="cpu", dtype=torch.uint8).contiguous().flatten(),
+                mode=torchvision.io.ImageReadMode.RGB,
+                device=torch.device(f"cuda:{device}"),
+            ).float() / 255.0
+            sr_image_list.append(decoded)
     sr_images = torch.stack(sr_image_list, dim=0)  # (batch_size, n_views, 3, H, W)
 
     sr_masks = rearrange(data["masks"].to(device), "b v c h w -> (b v) c h w")
@@ -682,17 +764,20 @@ def preprocess_data(data, lr_size, rank):
             
     if "supervise_image_bytes" in data:
         n_sv_view = len(data["supervise_image_bytes"][0])
+        sr_supervise_masks = data["supervise_masks"].to(device)
 
         sr_supervise_image_list = []
         for supervise_image_bytes in data["supervise_image_bytes"]:
-            for supervise_image_byte in supervise_image_bytes:
-                supervise_img = torchvision.io.decode_jpeg(
-                    supervise_image_byte, mode=torchvision.io.ImageReadMode.RGB,
-                    device=torch.device(device)).float() / 255.0  # (3, H, W)
-                sr_supervise_image_list.append(supervise_img)
-        sr_supervise_images = rearrange(torch.stack(sr_supervise_image_list, dim=0), "(b v) c h w -> b v c h w", b=n_batch)  # (batch_size, n_views, 3, H, W)
+            for image_bytes in supervise_image_bytes:
+                decoded = torchvision.io.decode_jpeg(
+                    image_bytes.detach().to(device="cpu", dtype=torch.uint8).contiguous().flatten(),
+                    mode=torchvision.io.ImageReadMode.RGB,
+                    device=torch.device(f"cuda:{device}"),
+                ).float() / 255.0
 
-        sr_supervise_masks = data["supervise_masks"].to(device)
+                sr_supervise_image_list.append(decoded)
+
+        sr_supervise_images = rearrange(torch.stack(sr_supervise_image_list, dim=0), "(b v) c h w -> b v c h w", b=n_batch)  # (batch_size, n_views, 3, H, W)
         
         sv_bg_color = torch.rand(n_batch, n_sv_view, 3, 1, 1, dtype=torch.float32, device=rank)
         
@@ -737,6 +822,8 @@ def forward_render_and_loss(model, targets, criterion, config, epoch, device, wi
                     mode='area'
                 )
                 images_hr = rearrange(images_hr, "(b v) c h w -> b v c h w", b=bsz, v=n_views)
+                
+                
             else:
                 images_hr = targets["sr_images"]
 
@@ -796,7 +883,7 @@ def forward_render_and_loss(model, targets, criterion, config, epoch, device, wi
     return batch_loss, loss_components, rendered_images, render_depths, preds, targets
 
 
-def train_epoch(model, loader, optimizer, scaler, criterion, config, epoch, sampler, rank, writer=None):
+def train_epoch(model, loader, optimizer, scheduler, scaler, criterion, config, epoch, sampler, rank, writer=None):
     """单个训练epoch"""
     model.train()
     sampler.set_epoch(epoch)  # 设置采样器epoch
@@ -879,8 +966,22 @@ def train_epoch(model, loader, optimizer, scaler, criterion, config, epoch, samp
             for metric_name, metric_value in loss_components.items():
                 writer.add_scalar(f'Iter/Loss/{metric_name}', metric_value, global_step)
 
+        # 按iter保存checkpoint（仅主进程）
+        if (
+            rank == 0
+            and getattr(config, "iter_save_interval", 0) > 0
+            and (batch_idx + 1) % config.iter_save_interval == 0
+        ):
+            save_checkpoint(
+                model,
+                optimizer,
+                scheduler,
+                epoch,
+                f"checkpoints/checkpoint_epoch_{epoch}_iter_{batch_idx + 1}_loss_{value_loss:.4f}.pt",
+            )
+
         # 优化日志输出（只在主进程）
-        if rank == 0 and batch_idx % 10 == 0:
+        if rank == 0 and batch_idx % 1 == 0:
             log_msg = f"Epoch {epoch} | Batch {batch_idx}/{len(loader)}"
             log_msg += f" | Loss: {value_loss:.4f}"
             if isinstance(loss_components, dict):
@@ -1020,7 +1121,7 @@ def main_worker(rank, world_size, config):
     train_loader, val_loader, train_sampler, val_sampler = build_dataloaders_distributed(config, rank, world_size)
 
     # 初始化模型
-    model, optimizer, scheduler, scaler = initialize_model(config, rank)
+    model, optimizer, scheduler, scaler, resume_epoch = initialize_model(config, rank)
 
     # 初始化损失函数
     criterion = MultiTaskLoss(config).to(rank)
@@ -1037,8 +1138,13 @@ def main_worker(rank, world_size, config):
     best_val_loss = float("inf")
     os.makedirs("checkpoints", exist_ok=True)
 
+    start_epoch = max(1, resume_epoch + 1)
+    if rank == 0 and start_epoch > 1:
+        print(f"Resume training from epoch {start_epoch} (checkpoint epoch: {resume_epoch})")
+
     # 训练循环
-    for epoch in range(1, config.epochs + 1):
+    for epoch in range(start_epoch, config.epochs + 1):
+        config.current_epoch = epoch
         start_time = time.time()
 
         # 学习率预热
@@ -1049,7 +1155,7 @@ def main_worker(rank, world_size, config):
 
         # 训练阶段
         train_loss, train_metrics = train_epoch(
-            model, train_loader, optimizer, scaler, criterion, config, epoch, train_sampler, rank, writer
+            model, train_loader, optimizer, scheduler, scaler, criterion, config, epoch, train_sampler, rank, writer
         )
 
         # 验证阶段（所有进程参与，主进程记录）

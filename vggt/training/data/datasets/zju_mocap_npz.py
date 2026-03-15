@@ -1,12 +1,15 @@
 import itertools
+import json
 import logging
 import os
 import os.path as osp
 import random
 import re
+import zipfile
 
 import numpy as np
 import torch
+import torch.distributed as dist
 import torchvision
 from torch.utils.data import Dataset
 
@@ -105,7 +108,7 @@ class ZjuMocapDatasetNpz(Dataset):
 		self.origin_width = 2048
 		self.origin_height = 2048
 
-		self._discover_samples(min_frames)
+		self._discover_samples(min_frames, need_valid=True)
 
 		if len(self.samples) > 10:
 			split_idx = int(len(self.samples) * 0.95)
@@ -116,15 +119,37 @@ class ZjuMocapDatasetNpz(Dataset):
 
 		logging.info("Loaded %d valid samples for %s", len(self.samples), split)
 
-	def _discover_samples(self, min_frames: int, need_valid: bool = False):
-		self.samples = []
+	@staticmethod
+	def _dist_rank_world() -> tuple[int, int]:
+		if dist.is_available() and dist.is_initialized():
+			return dist.get_rank(), dist.get_world_size()
+		return 0, 1
 
-		for seq_dir in sorted(os.listdir(self.data_root)):
-			if not re.match(r"^CoreView_\d+$", seq_dir):
+	def _discover_samples(self, min_frames: int, need_valid: bool = False):
+		rank, world_size = self._dist_rank_world()
+		local_samples = []
+
+		seq_dirs = [
+			seq_dir
+			for seq_dir in sorted(os.listdir(self.data_root))
+			if re.match(r"^CoreView_\d+$", seq_dir)
+		]
+
+		if world_size > 1:
+			seq_dirs = seq_dirs[rank::world_size]
+
+		for seq_dir in seq_dirs:
+			seq_path = osp.join(self.data_root, seq_dir)
+			# print(f"Rank {rank}: Processing sequence {seq_dir} at {seq_path}")
+
+			if not osp.isdir(seq_path):
 				continue
 
-			seq_path = osp.join(self.data_root, seq_dir)
-			if not osp.isdir(seq_path):
+			cached_valid_frames = self._try_load_valid_frames_cache(seq_path, min_frames)
+			if cached_valid_frames is not None:
+				if len(cached_valid_frames) >= min_frames:
+					for frame in cached_valid_frames:
+						local_samples.append({"seq_dir": seq_dir, "frame": frame})
 				continue
 
 			if self.frame_numbers:
@@ -143,30 +168,102 @@ class ZjuMocapDatasetNpz(Dataset):
 					npz_path = osp.join(seq_path, f"frame_{int(frame):04d}.npz")
 					if not osp.exists(npz_path):
 						continue
-					with np.load(npz_path, allow_pickle=True) as archive:
-						available_views = self._extract_available_views_from_archive(archive)
-						primary_groups = self._build_primary_view_groups(available_views)
-						if not primary_groups:
-							continue
+					try:
+						with np.load(npz_path, allow_pickle=True) as archive:
+							available_views = self._extract_available_views_from_archive(archive)
+							primary_groups = self._build_primary_view_groups(available_views)
+							if not primary_groups:
+								continue
 
-						valid = True
-						for view in primary_groups[0]:
-							entry = archive[f"view_{view:02d}"].item()
-							if any(entry.get(key, None) is None for key in key_list):
-								valid = False
-								break
-						if valid:
-							valid_frames.append(frame)
+							valid = True
+							for view in primary_groups[0]:
+								entry = archive[f"view_{view:02d}"].item()
+								if any(entry.get(key, None) is None for key in key_list):
+									valid = False
+									break
+							if valid:
+								valid_frames.append(frame)
+							else:
+								print(f"Invalid frame {frame} in sequence {seq_dir} due to missing/broken data.")
+					except (zipfile.BadZipFile, OSError, ValueError, EOFError):
+						logging.warning("Skip broken npz file: %s", npz_path)
+						continue
+
+				print(f"Rank {rank}: Valid sequence {seq_dir} at {seq_path}")
 
 				if len(valid_frames) >= min_frames:
+					self._save_valid_frames_cache(seq_path, min_frames, valid_frames)
 					for frame in valid_frames:
-						self.samples.append({"seq_dir": seq_dir, "frame": frame})
+						local_samples.append({"seq_dir": seq_dir, "frame": frame})
 			else:
 				if len(frame_numbers) >= min_frames:
 					for frame in frame_numbers:
-						self.samples.append({"seq_dir": seq_dir, "frame": frame})
+						local_samples.append({"seq_dir": seq_dir, "frame": frame})
 
-		logging.info("Discovered %d valid samples", len(self.samples))
+		if world_size > 1:
+			gathered_samples = [None for _ in range(world_size)]
+			dist.all_gather_object(gathered_samples, local_samples)
+			self.samples = []
+			for part in gathered_samples:
+				self.samples.extend(part)
+			self.samples.sort(key=lambda x: (x["seq_dir"], x["frame"]))
+		else:
+			self.samples = local_samples
+
+		logging.info(
+			"Discovered %d valid samples (rank %d/%d, local %d)",
+			len(self.samples),
+			rank,
+			world_size,
+			len(local_samples),
+		)
+
+	def _validation_cache_path(self, seq_path: str) -> str:
+		return osp.join(seq_path, ".vggt_zju_valid_frames_cache.json")
+
+	def _validation_cache_key(self, min_frames: int) -> dict:
+		return {
+			"version": 1,
+			"min_frames": int(min_frames),
+			"frame_numbers": self.frame_numbers,
+			"n_views_supervise": int(self.n_views_supervise),
+		}
+
+	def _try_load_valid_frames_cache(self, seq_path: str, min_frames: int) -> list[int] | None:
+		cache_path = self._validation_cache_path(seq_path)
+		if not osp.exists(cache_path):
+			return None
+
+		try:
+			with open(cache_path, "r", encoding="utf-8") as f:
+				payload = json.load(f)
+		except Exception:
+			return None
+
+		if payload.get("cache_key") != self._validation_cache_key(min_frames):
+			return None
+
+		valid_frames = payload.get("valid_frames")
+		if not isinstance(valid_frames, list):
+			return None
+
+		return [int(frame) for frame in valid_frames]
+
+	def _save_valid_frames_cache(self, seq_path: str, min_frames: int, valid_frames: list[int]):
+		cache_path = self._validation_cache_path(seq_path)
+		payload = {
+			"cache_key": self._validation_cache_key(min_frames),
+			"valid_frames": [int(frame) for frame in sorted(valid_frames)],
+		}
+		tmp_path = f"{cache_path}.tmp"
+		try:
+			with open(tmp_path, "w", encoding="utf-8") as f:
+				json.dump(payload, f, ensure_ascii=True)
+			os.replace(tmp_path, cache_path)
+		except Exception:
+			logging.exception("Failed to write validation cache: %s", cache_path)
+			if osp.exists(tmp_path):
+				os.remove(tmp_path)
 
 	@staticmethod
 	def _extract_available_views_from_archive(archive) -> list[int]:
@@ -185,7 +282,7 @@ class ZjuMocapDatasetNpz(Dataset):
 	def _build_primary_view_groups(available_views: list[int]) -> list[list[int]]:
 		available_set = set(available_views)
 		groups = []
-		for start in range(1, 7):
+		for start in range(1, 6):
 			group = [start + 6 * step for step in range(4)]
 			if all(view in available_set for view in group):
 				groups.append(group)
@@ -249,7 +346,7 @@ class ZjuMocapDatasetNpz(Dataset):
 		return different_combinations if different_combinations else valid_combinations
 
 	def __len__(self):
-		return len(self.samples) * 20
+		return len(self.samples) * 10000
 
 	def __getitem__(self, idx):
 		sample = self.samples[idx % len(self.samples)]
