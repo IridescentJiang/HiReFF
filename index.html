@@ -160,11 +160,6 @@
     <div class="columns is-centered has-text-centered">
       <div class="column is-four-fifths">
 
-        <!-- Teaser Figure -->
-        <div class="content has-text-centered">
-          <img src="./static/images/teaser.png" alt="Teaser" width="100%" class="center">
-        </div>
-
         <!-- Teaser Video -->
         <div class="content has-text-centered">
           <video id="teaser-video" controls muted preload playsinline width="100%">
@@ -183,6 +178,12 @@
 
         <!-- Abstract -->
         <h2 class="title is-3">Abstract</h2>
+
+        <!-- Teaser Figure -->
+        <div class="content has-text-centered">
+          <img src="./static/images/teaser.png" alt="Teaser" width="100%" class="center">
+        </div>
+
         <div class="content has-text-justified">
           <p>
             Uncalibrated volumetric video streaming for human reconstruction is essential for holographic communication and AR/VR, yet remains challenging due to the need for temporal consistency and computational efficiency from sparse-view inputs. Existing methods rely on per-scene optimization or calibrated cameras, while recent feed-forward models are limited to low-resolution (0.5K) single-frame synthesis. We present HiReFF, a feed-forward method for 2K-resolution 360&deg; human video reconstruction from uncalibrated sparse-view videos. Our framework decomposes the problem into two key tasks: foreground 3D Gaussian reconstruction from sparse-view videos (four views separated by 90&deg;) and computationally efficient high-resolution synthesis. To enable the former, we propose Scale-synchronized Camera Calibration to resolve scale ambiguity for multi-view supervision, and Gaussian-wise Foreground Masking to reconstruct clean foregrounds by modulating Gaussian parameters. For efficient high-resolution synthesis, our High-resolution Side-tuning achieves 2K rendering by augmenting the Gaussian head with supplementary features while keeping the backbone at 0.5K, drastically reducing computational overhead. Experiments demonstrate that HiReFF significantly outperforms existing methods in high-resolution streaming volumetric video reconstruction.
