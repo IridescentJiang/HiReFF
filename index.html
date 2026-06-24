@@ -73,29 +73,29 @@
           <!-- Authors -->
           <div class="is-size-5 publication-authors">
             <span class="author-block">
-              <a href="https://iridescentjiang.github.io/" target="_blank">Yiming Jiang</a><sup>1&#x2606;</sup>,
+              <a href="https://scholar.google.com.hk/citations?user=gqaK3igAAAAJ&hl=zh-CN" target="_blank">Yiming Jiang</a><sup>1&#x2606;</sup>,
             </span>
             <span class="author-block">
-              <a href="AUTHOR_URL" target="_blank">Hanzhang Tu</a><sup>2</sup>,
+              <a href="https://scholar.google.com.hk/citations?user=0S0lNhUAAAAJ&hl=zh-CN&oi=ao" target="_blank">Hanzhang Tu</a><sup>2</sup>,
             </span>
             <span class="author-block">
-              <a href="AUTHOR_URL" target="_blank">Wenfeng Song</a><sup>3</sup>,
+              <a href="https://scholar.google.com.hk/citations?user=BDfZbbEAAAAJ&hl=zh-CN" target="_blank">Wenfeng Song</a><sup>3</sup>,
             </span>
             <span class="author-block">
-              <a href="AUTHOR_URL" target="_blank">Siyou Lin</a><sup>2</sup>,
+              <a href="https://scholar.google.com.hk/citations?user=XBzr0pkAAAAJ&hl=zh-CN&oi=ao" target="_blank">Siyou Lin</a><sup>2</sup>,
             </span>
             <span class="author-block">
-              <a href="AUTHOR_URL" target="_blank">Liang An</a><sup>2</sup>,
+              <a href="https://scholar.google.com.hk/citations?user=s0T1w0gAAAAJ&hl=zh-CN&oi=sra" target="_blank">Liang An</a><sup>2</sup>,
             </span>
             <br>
             <span class="author-block">
-              <a href="AUTHOR_URL" target="_blank">Shuai Li</a><sup>1,4</sup>,
+              <a href="https://scholar.google.com.hk/citations?user=hn0KFx8AAAAJ&hl=zh-CN" target="_blank">Shuai Li</a><sup>1,4</sup>,
             </span>
             <span class="author-block">
-              <a href="AUTHOR_URL" target="_blank">Aimin Hao</a><sup>1&#x2709;</sup>,
+              <a href="https://research.buaa.edu.cn/en/persons/aimin-hao/" target="_blank">Aimin Hao</a><sup>1&#x2709;</sup>,
             </span>
             <span class="author-block">
-              <a href="https://www.liuyebin.com/" target="_blank">Yebin Liu</a><sup>2</sup>
+              <a href="https://scholar.google.com.hk/citations?user=ogXIdlYAAAAJ&hl=zh-CN" target="_blank">Yebin Liu</a><sup>2</sup>
             </span>
           </div>
 
@@ -129,21 +129,21 @@
               </a>
             </span>
 
-            <!-- Supplementary -->
-            <span class="link-block">
-              <a href="SUPP_URL" target="_blank"
-                 class="external-link button is-normal is-rounded is-dark">
-                <span class="icon"><i class="fas fa-file-alt"></i></span>
-                <span>Supplementary</span>
-              </a>
-            </span>
-
             <!-- Code -->
             <span class="link-block">
               <a href="https://github.com/IridescentJiang/HiReFF" target="_blank"
                  class="external-link button is-normal is-rounded is-dark">
                 <span class="icon"><i class="fab fa-github"></i></span>
                 <span>Code</span>
+              </a>
+            </span>
+
+            <!-- Supplementary -->
+            <span class="link-block">
+              <a href="SUPP_URL" target="_blank"
+                 class="external-link button is-normal is-rounded is-dark">
+                <span class="icon"><i class="fas fa-file-alt"></i></span>
+                <span>Supplementary</span>
               </a>
             </span>
           </div>
@@ -162,13 +162,13 @@
 
         <!-- Teaser Video -->
         <div class="content has-text-centered">
-          <video id="teaser-video" controls muted preload playsinline width="100%">
-            <source src="./static/videos/teaser.mp4" type="video/mp4">
+          <video id="teaser-video" controls preload playsinline width="100%">
+            <source src="./static/videos/Hireff_Demo_Video.mp4" type="video/mp4">
           </video>
         </div>
 
         <!-- Highlights -->
-        <p style="text-align: left; width: 780px; margin: 0 auto; background-color: #ffffff; padding: 10px; border-radius: 5px;">
+        <p style="text-align: left; width: 780px; margin: 0 auto; padding: 10px; border-radius: 5px;">
           &#x2B50; &nbsp <strong>Feed-forward 2K-resolution 360&deg; human video reconstruction from only four uncalibrated 90&deg;-spaced views.</strong><br>
           &#x2B50; &nbsp <strong>Streaming 3D Gaussian reconstruction at 3.01 FPS on a single RTX 4090 GPU.</strong><br>
           &#x2B50; &nbsp <strong>High-resolution Side-tuning achieves 2K rendering with only 34% additional VRAM during training.</strong><br>
@@ -210,7 +210,7 @@
 </section>
 
 <!-- ===== RESULTS ===== -->
-<section class="section hero is-light">
+<section class="section hero is-light results-section">
   <div class="container is-max-desktop">
     <center><h2 class="title is-3">Results</h2></center>
 
@@ -218,22 +218,22 @@
     <center><h3 class="title is-4">Visualization Results</h3></center>
     <div class="content has-text-justified">
       <p>
-        Qualitative comparison of HiReFF against state-of-the-art methods on high-resolution novel view synthesis from uncalibrated sparse-view videos.
+        Qualitative comparison of HiReFF on high-resolution novel view synthesis from uncalibrated sparse-view videos.
       </p>
     </div>
     <div class="content has-text-centered">
-      <img src="./static/images/fig4_visualization.png" alt="Visualization Results (Fig.4)" width="100%" class="center">
+      <img src="./static/images/all_views_supmat.png" alt="Visualization Results (Fig.4)" width="100%" class="center">
     </div>
 
     <!-- Temporal Consistency (Fig.5) -->
-    <center><h3 class="title is-4" style="margin-top: 2rem;">Temporal Consistency</h3></center>
+    <center><h3 class="title is-4">Temporal Consistency</h3></center>
     <div class="content has-text-justified">
       <p>
-        HiReFF maintains strong temporal consistency across streaming frames, producing stable reconstructions without flickering or drift.
+        HiReFF maintains strong temporal consistency across streaming frames, producing stable reconstructions.
       </p>
     </div>
     <div class="content has-text-centered">
-      <img src="./static/images/fig5_temporal.png" alt="Temporal Consistency (Fig.5)" width="100%" class="center">
+      <img src="./static/images/time_consist.png" alt="Temporal Consistency (Fig.5)" width="100%" class="center">
     </div>
   </div>
 </section>

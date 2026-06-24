@@ -127,11 +127,21 @@ video {
 
 /* ---------- Section headings ---------- */
 .title.is-3 {
-  color: #1a5276;
+  color: #1a5276 !important;
 }
 
 .title.is-4 {
-  color: #2471a3;
+  color: #363636 !important;
+}
+
+/* ---------- Results spacing ---------- */
+.results-section h3 {
+  margin-top: 2rem;
+  margin-bottom: 0.8rem;
+}
+
+.results-section .content {
+  margin-bottom: 1.5rem;
 }
 
 /* ---------- Responsive ---------- */
