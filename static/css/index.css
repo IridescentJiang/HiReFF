@@ -1,0 +1,156 @@
+/* ============================================================
+   Academic Project Page - Custom Styles
+   Based on Nerfies / Academic Project Page Template
+   ============================================================ */
+
+body {
+  font-family: 'Google Sans', 'Noto Sans', 'Castoro', sans-serif;
+}
+
+/* ---------- Navbar ---------- */
+.navbar {
+  background-color: #fff;
+  border-bottom: 1px solid #eee;
+}
+
+/* ---------- Hero / Title ---------- */
+.hero-body {
+  padding-bottom: 1rem;
+}
+
+.publication-title {
+  font-weight: 700;
+  line-height: 1.3;
+  margin-bottom: 1rem;
+}
+
+.publication-authors {
+  margin-bottom: 0.25rem;
+}
+
+.publication-authors .author-block {
+  display: inline-block;
+  margin: 0 0.15rem;
+}
+
+.publication-authors a {
+  color: #2c3e50;
+}
+
+.publication-authors a:hover {
+  color: #9A426E;
+  text-decoration: underline;
+}
+
+.publication-authors sup {
+  color: #e74c3c;
+  font-size: 0.7em;
+}
+
+.eql-cntrb {
+  color: #7f8c8d;
+}
+
+/* ---------- Link Buttons ---------- */
+.link-block {
+  margin: 0.3rem;
+}
+
+.link-block .button.is-dark {
+  background-color: #2c3e50;
+  border-color: transparent;
+  color: #fff;
+  transition: background-color 0.2s ease;
+}
+
+.link-block .button.is-dark:hover {
+  background-color: #9A426E;
+}
+
+/* ---------- Abstract ---------- */
+.container.is-max-desktop {
+  max-width: 960px !important;
+}
+
+/* ---------- Images ---------- */
+img.center {
+  display: block;
+  margin: 0 auto;
+  max-width: 100%;
+  height: auto;
+}
+
+/* ---------- Videos ---------- */
+video {
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  max-width: 100%;
+}
+
+/* ---------- Carousel ---------- */
+.carousel .item {
+  padding: 0 0.5rem;
+}
+
+/* ---------- BibTeX ---------- */
+#BibTeX pre {
+  background-color: #f5f5f5;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 1.25rem;
+  font-size: 0.85rem;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+#BibTeX code {
+  background: none;
+  padding: 0;
+}
+
+/* ---------- Footer ---------- */
+.footer {
+  background-color: #fafafa;
+  padding: 2rem 1.5rem;
+  font-size: 0.85rem;
+  color: #7f8c8d;
+}
+
+.footer a {
+  color: #2c3e50;
+}
+
+.footer a:hover {
+  color: #9A426E;
+}
+
+/* ---------- Responsive ---------- */
+@media screen and (max-width: 768px) {
+  .publication-title {
+    font-size: 1.8rem !important;
+  }
+
+  .container.is-max-desktop {
+    padding: 0 1rem;
+  }
+
+  .hero-body {
+    padding: 1.5rem 1rem;
+  }
+}
+
+/* ---------- Section spacing ---------- */
+.section {
+  padding: 2.5rem 1.5rem;
+}
+
+/* ---------- Highlight box ---------- */
+.highlight-box {
+  text-align: left;
+  max-width: 780px;
+  margin: 0 auto;
+  background-color: #ffffff;
+  padding: 10px;
+  border-radius: 5px;
+}
