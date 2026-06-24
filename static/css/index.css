@@ -1,5 +1,5 @@
 /* ============================================================
-   Academic Project Page - Custom Styles
+   HiReFF Project Page - Custom Styles (Blue Theme)
    Based on Nerfies / Academic Project Page Template
    ============================================================ */
 
@@ -10,7 +10,7 @@ body {
 /* ---------- Navbar ---------- */
 .navbar {
   background-color: #fff;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid #d6eaf8;
 }
 
 /* ---------- Hero / Title ---------- */
@@ -34,16 +34,16 @@ body {
 }
 
 .publication-authors a {
-  color: #2c3e50;
+  color: #1a5276;
 }
 
 .publication-authors a:hover {
-  color: #9A426E;
+  color: #2980b9;
   text-decoration: underline;
 }
 
 .publication-authors sup {
-  color: #e74c3c;
+  color: #2980b9;
   font-size: 0.7em;
 }
 
@@ -57,17 +57,17 @@ body {
 }
 
 .link-block .button.is-dark {
-  background-color: #2c3e50;
+  background-color: #1a5276;
   border-color: transparent;
   color: #fff;
   transition: background-color 0.2s ease;
 }
 
 .link-block .button.is-dark:hover {
-  background-color: #9A426E;
+  background-color: #2980b9;
 }
 
-/* ---------- Abstract ---------- */
+/* ---------- Container ---------- */
 .container.is-max-desktop {
   max-width: 960px !important;
 }
@@ -118,11 +118,20 @@ video {
 }
 
 .footer a {
-  color: #2c3e50;
+  color: #1a5276;
 }
 
 .footer a:hover {
-  color: #9A426E;
+  color: #2980b9;
+}
+
+/* ---------- Section headings ---------- */
+.title.is-3 {
+  color: #1a5276;
+}
+
+.title.is-4 {
+  color: #2471a3;
 }
 
 /* ---------- Responsive ---------- */
@@ -143,14 +152,4 @@ video {
 /* ---------- Section spacing ---------- */
 .section {
   padding: 2.5rem 1.5rem;
-}
-
-/* ---------- Highlight box ---------- */
-.highlight-box {
-  text-align: left;
-  max-width: 780px;
-  margin: 0 auto;
-  background-color: #ffffff;
-  padding: 10px;
-  border-radius: 5px;
 }
