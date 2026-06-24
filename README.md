@@ -1,11 +1,21 @@
 # HiReFF: High-Resolution Feedforward Human Reconstruction from Uncalibrated Sparse-View Video
 
+[![arXiv](https://img.shields.io/badge/arXiv-PAPER_ID-b31b1b)](ARXIV_URL)
+[![Project Page](https://img.shields.io/badge/Project-Page-orange)](https://iridescentjiang.github.io/HiReFF/)
+
 Official PyTorch implementation for the paper:
 
 > **[HiReFF: High-Resolution Feedforward Human Reconstruction from Uncalibrated Sparse-View Video](ARXIV_URL) [ECCV 2026]**
->
-> Yiming Jiang<sup>&#x2606;</sup>, Hanzhang Tu, Wenfeng Song, Siyou Lin, Liang An, Shuai Li, Aimin Hao<sup>&#x2709;</sup>, Yebin Liu
->
+
+[Yiming Jiang](https://scholar.google.com.hk/citations?user=gqaK3igAAAAJ&hl=zh-CN)<sup>&#x2606;</sup>,
+[Hanzhang Tu](https://scholar.google.com.hk/citations?user=0S0lNhUAAAAJ&hl=zh-CN&oi=ao),
+[Wenfeng Song](https://scholar.google.com.hk/citations?user=BDfZbbEAAAAJ&hl=zh-CN),
+[Siyou Lin](https://scholar.google.com.hk/citations?user=XBzr0pkAAAAJ&hl=zh-CN&oi=ao),
+[Liang An](https://scholar.google.com.hk/citations?user=s0T1w0gAAAAJ&hl=zh-CN&oi=sra),
+[Shuai Li](https://scholar.google.com.hk/citations?user=hn0KFx8AAAAJ&hl=zh-CN),
+[Aimin Hao](https://research.buaa.edu.cn/en/persons/aimin-hao/)<sup>&#x2709;</sup>,
+[Yebin Liu](https://scholar.google.com.hk/citations?user=ogXIdlYAAAAJ&hl=zh-CN)
+
 > <sup>&#x2606;</sup> Work done during an internship at Tsinghua University. &nbsp; <sup>&#x2709;</sup> Corresponding author. Email: jiangyimingjym@buaa.edu.cn ham@buaa.edu.cn liuyebin@tsinghua.edu.cn
 
 ![Teaser](static/images/teaser.png)
