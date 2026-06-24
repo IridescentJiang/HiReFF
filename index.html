@@ -129,15 +129,6 @@
               </a>
             </span>
 
-            <!-- PDF -->
-            <span class="link-block">
-              <a href="PAPER_PDF_URL" target="_blank"
-                 class="external-link button is-normal is-rounded is-dark">
-                <span class="icon"><i class="fas fa-file-pdf"></i></span>
-                <span>Paper</span>
-              </a>
-            </span>
-
             <!-- Supplementary -->
             <span class="link-block">
               <a href="SUPP_URL" target="_blank"
@@ -178,9 +169,9 @@
 
         <!-- Highlights -->
         <p style="text-align: left; width: 780px; margin: 0 auto; background-color: #ffffff; padding: 10px; border-radius: 5px;">
-          &#x1F525; &nbsp <strong>Feed-forward 2K-resolution 360&deg; human video reconstruction from only four uncalibrated 90&deg;-spaced views.</strong><br>
-          &#x1F525; &nbsp <strong>Streaming 3D Gaussian reconstruction at 3.01 FPS on a single RTX 4090 GPU.</strong><br>
-          &#x1F525; &nbsp <strong>High-resolution Side-tuning achieves 2K rendering with only 34% additional VRAM during training.</strong><br>
+          &#x2B50; &nbsp <strong>Feed-forward 2K-resolution 360&deg; human video reconstruction from only four uncalibrated 90&deg;-spaced views.</strong><br>
+          &#x2B50; &nbsp <strong>Streaming 3D Gaussian reconstruction at 3.01 FPS on a single RTX 4090 GPU.</strong><br>
+          &#x2B50; &nbsp <strong>High-resolution Side-tuning achieves 2K rendering with only 34% additional VRAM during training.</strong><br>
         </p>
 
         <br>
@@ -217,34 +208,26 @@
   <div class="container is-max-desktop">
     <center><h2 class="title is-3">Results</h2></center>
 
-    <!-- High-Resolution Novel View Synthesis -->
-    <center><h3 class="title is-4">2K Resolution Novel View Synthesis</h3></center>
+    <!-- Visualization (Fig.4) -->
+    <center><h3 class="title is-4">Visualization Results</h3></center>
     <div class="content has-text-justified">
       <p>
-        HiReFF achieves photorealistic 2K-resolution novel view synthesis from just four uncalibrated 90&deg;-spaced input views, significantly surpassing prior methods in both visual quality and resolution.
+        Qualitative comparison of HiReFF against state-of-the-art methods on high-resolution novel view synthesis from uncalibrated sparse-view videos.
       </p>
     </div>
     <div class="content has-text-centered">
-      <img src="./static/images/qualitative_results.png" alt="Qualitative Results" width="100%" class="center">
+      <img src="./static/images/fig4_visualization.png" alt="Visualization Results (Fig.4)" width="100%" class="center">
     </div>
 
-    <!-- Streaming -->
-    <center><h3 class="title is-4" style="margin-top: 2rem;">Streaming Reconstruction</h3></center>
+    <!-- Temporal Consistency (Fig.5) -->
+    <center><h3 class="title is-4" style="margin-top: 2rem;">Temporal Consistency</h3></center>
     <div class="content has-text-justified">
       <p>
-        HiReFF processes streaming video inputs and reconstructs temporally consistent 3D Gaussians at 3.01 FPS on a single RTX 4090 GPU.
+        HiReFF maintains strong temporal consistency across streaming frames, producing stable reconstructions without flickering or drift.
       </p>
     </div>
     <div class="content has-text-centered">
-      <video poster="" id="streaming" autoplay controls muted loop playsinline width="80%">
-        <source src="./static/videos/streaming.mp4" type="video/mp4">
-      </video>
-    </div>
-
-    <!-- Comparisons -->
-    <center><h3 class="title is-4" style="margin-top: 2rem;">Comparisons with State-of-the-Art</h3></center>
-    <div class="content has-text-centered">
-      <img src="./static/images/comparison.png" alt="Comparison with baselines" width="100%" class="center">
+      <img src="./static/images/fig5_temporal.png" alt="Temporal Consistency (Fig.5)" width="100%" class="center">
     </div>
   </div>
 </section>
