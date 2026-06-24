@@ -4,9 +4,9 @@ Official PyTorch implementation for the paper:
 
 > **[HiReFF: High-Resolution Feedforward Human Reconstruction from Uncalibrated Sparse-View Video](ARXIV_URL) [ECCV 2026]**
 >
-> Yiming Jiang\*, Hanzhang Tu, Wenfeng Song, Siyou Lin, Liang An, Shuai Li\*, Aimin Hao, Yebin Liu
+> Yiming Jiang<sup>&#x2606;</sup>, Hanzhang Tu, Wenfeng Song, Siyou Lin, Liang An, Shuai Li, Aimin Hao<sup>&#x2709;</sup>, Yebin Liu
 >
-> \* Corresponding authors.
+> <sup>&#x2606;</sup> Work done during an internship at Tsinghua University. &nbsp; <sup>&#x2709;</sup> Corresponding author. Email: \_\_\_@\_\_\_
 
 ![Teaser](static/images/teaser.png)
 
@@ -18,32 +18,11 @@ Official PyTorch implementation for the paper:
 
 > HiReFF decomposes 4D human reconstruction into two key tasks: foreground 3D Gaussian reconstruction from uncalibrated sparse-view videos and computationally efficient high-resolution synthesis. It employs Scale-synchronized Camera Calibration to resolve metric scale ambiguity, Gaussian-wise Foreground Masking to reconstruct clean foregrounds, and High-resolution Side-tuning for efficient 2K rendering.
 
-## Environmental Preparation
+## Code
 
-- Ubuntu (Linux)
-- Python 3.8+
-- PyTorch 1.13+
-- CUDA 11.7+
-
-Create environment:
-
-```bash
-conda env create -f environment.yml
-```
-
-Install additional dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
-## Training
-
-Coming soon.
-
-## Prerequisites
-
-Coming soon.
+- [ ] Release training code
+- [ ] Release inference code
+- [ ] Release pretrained models
 
 ## Citation
 
