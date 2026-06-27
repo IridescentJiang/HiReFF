@@ -246,18 +246,13 @@ class Aggregator(nn.Module):
 
         for block_num in range(self.aa_block_num):
             for attn_type in self.aa_order:
-                global_merging = block_num
                 if attn_type == "frame":
-                    # frame_start_time = time.time_ns() // 1_000_000
                     tokens, frame_idx, frame_intermediates = self._process_frame_attention(
-                        tokens, B, S, P, C, frame_idx, pos=pos, global_merging=None
+                        tokens, B, S, P, C, frame_idx, pos=pos,
                     )
-                    # frame_end_time = time.time_ns() // 1_000_000
-                    # frame_att_time += frame_end_time - frame_start_time
                 elif attn_type == "global":
-                    # global_start_time = time.time_ns() // 1_000_000
                     tokens, global_idx, global_intermediates = self._process_global_attention(
-                        tokens, B, S, P, C, global_idx, pos=pos, global_merging=None
+                        tokens, B, S, P, C, global_idx, pos=pos,
                     )
                     # global_end_time = time.time_ns() // 1_000_000
                     # global_att_time += global_end_time - global_start_time
@@ -277,11 +272,10 @@ class Aggregator(nn.Module):
         del global_intermediates
         return output_list, self.patch_start_idx
 
-    def _process_frame_attention(self, tokens, B, S, P, C, frame_idx, pos=None, global_merging=None):
+    def _process_frame_attention(self, tokens, B, S, P, C, frame_idx, pos=None):
         """
         Process frame attention blocks. We keep tokens in shape (B*S, P, C).
         """
-        # If needed, reshape tokens or positions:
         if tokens.shape != (B * S, P, C):
             tokens = tokens.view(B, S, P, C).view(B * S, P, C)
 
@@ -290,15 +284,14 @@ class Aggregator(nn.Module):
 
         intermediates = []
 
-        # by default, self.aa_block_size=1, which processes one block at a time
         for _ in range(self.aa_block_size):
-            tokens = self.frame_blocks[frame_idx](tokens, pos=pos, global_merging=global_merging)
+            tokens = self.frame_blocks[frame_idx](tokens, pos=pos)
             frame_idx += 1
             intermediates.append(tokens.view(B, S, P, C))
 
         return tokens, frame_idx, intermediates
 
-    def _process_global_attention(self, tokens, B, S, P, C, global_idx, pos=None, global_merging=None):
+    def _process_global_attention(self, tokens, B, S, P, C, global_idx, pos=None):
         """
         Process global attention blocks. We keep tokens in shape (B, S*P, C).
         """
@@ -310,9 +303,8 @@ class Aggregator(nn.Module):
 
         intermediates = []
 
-        # by default, self.aa_block_size=1, which processes one block at a time
         for _ in range(self.aa_block_size):
-            tokens = self.global_blocks[global_idx](tokens, pos=pos, global_merging=global_merging)
+            tokens = self.global_blocks[global_idx](tokens, pos=pos)
             global_idx += 1
             intermediates.append(tokens.view(B, S, P, C))
 

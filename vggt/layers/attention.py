@@ -15,9 +15,6 @@ from torch import Tensor
 from torch import nn
 import torch
 import torch.nn.functional as F
-from merging.merge import (
-    token_merge_bipartite2d,
-)
 
 XFORMERS_AVAILABLE = False
 
@@ -56,8 +53,7 @@ class Attention(nn.Module):
         self.patch_width = patch_width
         self.patch_height = patch_height
 
-    def forward(self, x: Tensor, pos=None, global_merging=None) -> Tensor:
-        merge_num = list(range(24))
+    def forward(self, x: Tensor, pos=None) -> Tensor:
         B, N, C = x.shape
         qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4)
         q, k, v = qkv.unbind(0)
@@ -68,57 +64,8 @@ class Attention(nn.Module):
             k = self.rope(k, pos)
 
         if self.fused_attn:
-
-            if global_merging is not None and global_merging in merge_num:
-                generator = torch.Generator(device=x.device)
-                generator.manual_seed(33)
-
-                merge_ratio = 0.1
-                r = int(x.shape[1] * merge_ratio)
-
-                m, u = token_merge_bipartite2d(
-                    x,
-                    self.patch_width,
-                    self.patch_height,
-                    2,
-                    2,
-                    r,
-                    False,
-                    generator,
-                    enable_protection=True,
-                )
-
-                m_a, u_a = (m, u)
-
-                B_q, H_q, N_q, D_q = q.shape
-
-                q_merge_in = q.permute(0, 2, 1, 3).reshape(B_q, N_q, H_q * D_q)
-                k_merge_in = k.permute(0, 2, 1, 3).reshape(B_q, N_q, H_q * D_q)
-                v_merge_in = v.permute(0, 2, 1, 3).reshape(B_q, N_q, H_q * D_q)
-
-                q_out, k_out, v_out = m_a(
-                    q_merge_in,
-                    mode="mean",
-                    extra_tensors=k_merge_in,
-                    extra_tensors_2=v_merge_in,
-                )
-
-                del q_merge_in, k_merge_in, v_merge_in
-
-                N_m = q_out.shape[1]
-                q = q_out.reshape(B_q, N_m, H_q, D_q).permute(0, 2, 1, 3)
-                k = k_out.reshape(B_q, N_m, H_q, D_q).permute(0, 2, 1, 3)
-                v = v_out.reshape(B_q, N_m, H_q, D_q).permute(0, 2, 1, 3)
-
-                del q_out, k_out, v_out
-
-                N = N_m
-
             x = F.scaled_dot_product_attention(
-                q,
-                k,
-                v,
-                dropout_p=self.attn_drop.p if self.training else 0.0,
+                q, k, v, dropout_p=self.attn_drop.p if self.training else 0.0,
             )
         else:
             q = q * self.scale
@@ -130,13 +77,11 @@ class Attention(nn.Module):
         x = x.transpose(1, 2).reshape(B, N, C)
         x = self.proj(x)
         x = self.proj_drop(x)
-        if global_merging is not None and global_merging in merge_num:
-            x = u_a(x)
         return x
 
 
 class MemEffAttention(Attention):
-    def forward(self, x: Tensor, attn_bias=None, pos=None, global_merging=None) -> Tensor:
+    def forward(self, x: Tensor, attn_bias=None, pos=None) -> Tensor:
         assert pos is None
         if not XFORMERS_AVAILABLE:
             if attn_bias is not None:
