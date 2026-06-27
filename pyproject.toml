@@ -1,5 +1,9 @@
 [project]
+name = "hireff"
+description = "HiReFF: 4D Gaussian Human Reconstruction via VGGT"
 authors = [{name = "Jianyuan Wang", email = "jianyuan@robots.ox.ac.uk"}]
+requires-python = ">= 3.10"
+version = "0.1.0"
 dependencies = [
     "numpy<2",
     "Pillow",
@@ -7,46 +11,31 @@ dependencies = [
     "einops",
     "safetensors",
     "opencv-python",
+    "torch>=2.0.0",
+    "torchvision>=0.15.0",
+    "scipy",
+    "imageio",
+    "scikit-image",
+    "timm",
 ]
-name = "vggt"
-requires-python = ">= 3.10"
-version = "0.0.1"
 
 [project.optional-dependencies]
+gsplat = ["gsplat>=1.0.0"]
+train = ["tensorboard", "tqdm"]
 demo = [
-    "gradio==5.17.1",
-    "viser==0.2.23",
-    "tqdm",
-    "hydra-core",
-    "omegaconf",
-    "opencv-python",
-    "scipy",
-    "onnxruntime",
-    "requests",
+    "gradio>=5.17",
+    "viser>=0.2",
     "trimesh",
     "matplotlib",
+    "requests",
+    "hydra-core",
+    "omegaconf",
 ]
 
-# Using setuptools as the build backend
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
-# setuptools configuration
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["vggt*"]
-
-# Pixi configuration
-[tool.pixi.workspace]
-channels = ["conda-forge"]
-platforms = ["linux-64"]
-
-[tool.pixi.pypi-dependencies]
-vggt = { path = ".", editable = true }
-
-[tool.pixi.environments]
-default = { solve-group = "default" }
-demo = { features = ["demo"], solve-group = "default" }
-
-[tool.pixi.tasks]

@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 import numpy
 import math
@@ -18,12 +19,11 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.amp import autocast, GradScaler
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import Subset
-# import torchnvjpeg
 
 from einops import rearrange
 
 from vggt.models.vggt import VGGT
-# from vggt.models.vggt_origin import VGGT as VGGT_Ori
+from vggt.training.train_config import TrainingConfig
 from vggt.training.data.datasets.dna_rendering_npz import DnaRenderingDatasetNpz, dna_collate_fn
 from vggt.training.data.datasets.zju_mocap_npz import ZjuMocapDatasetNpz
 from vggt.training.data.datasets.mvhuman_npz import MvHumanDatasetNpz
@@ -34,123 +34,13 @@ from vggt.rendering.render_image import encode_poses, \
     save_rendered_images, adjust_transl, batch_render_images_my
 from vggt.utils.visualization import vis_depth_map
 
-torch.backends.cudnn.benchmark = True  # 启用cuDNN自动调优
-
-# 设置环境变量
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7"
-
-# 配置参数
-class TrainingConfig:
-    # 数据参数
-    train_type = "frames"  # single_frame or frames
-
-    if train_type == "single_frame":
-        frame_numbers = ['000000']
-    elif train_type == "frames":
-        frame_numbers = None
-    else:
-        raise ValueError("train_type must be 'single_frame' or 'frames'.")
-
-    if frame_numbers is not None and len(frame_numbers) <= 10:
-        frame_numbers = frame_numbers * int(100 // len(frame_numbers))  # 重复以增加数据量
-
-    dataset_mode = "mix"  # single or mix
-    single_dataset = "mvhuman"  # dna or zju or mvhuman
-    mix_datasets = ["dna", "zju", "mvhuman"]
-    mix_balance = True  # 是否对mix模式下各子数据集做均衡采样
-    mix_balance_mode = "weighted"  # downsample or upsample or weighted
-    mix_balance_seed = 42
-    mix_balance_val = True  # 是否对验证集也做均衡
-    mix_dataset_weights = {"dna": 0.45, "zju": 0.1, "mvhuman": 0.45}  # weighted模式下权重
-    mix_weighted_target_total = None  # weighted模式总采样量，None表示使用当前总样本数
-
-    data_root_prefix = "/ai/beihang/data/full_training/"
-    dna_data_root = f"{data_root_prefix}/dna-rendering"
-    zju_data_root = f"{data_root_prefix}/zju-mocap"
-    mvhuman_data_root = f"{data_root_prefix}/mvhuman"
-
-    if dataset_mode == "single":
-        if single_dataset == "dna":
-            data_root = dna_data_root
-        elif single_dataset == "zju":
-            data_root = zju_data_root
-        elif single_dataset == "mvhuman":
-            data_root = mvhuman_data_root
-        else:
-            raise ValueError("single_dataset must be 'dna' or 'zju' or 'mvhuman'.")
-
-    render_images_path = "render_images/"
-
-    gpus_num = torch.cuda.device_count()
-    device = None
-
-    batch_size = 1 * gpus_num
-    num_workers = 4
-
-    img_size = 518  # Aggregator输入图像大小
-    sr_img_size = 2072  # Supplementary head输入图像大小 / 监督渲染损失的图像大小
-    lpip_patch_size = 518  # lpip监督patch大小
-    random_patch = False  # 是否使用随机patch计算渲染损失，如果为False，则将全图插值到lpip_patch_size大小计算渲染损失
-    random_patch_epoch = 1000  # 在第二阶段使用，表示在多少epoch后开始使用随机patch计算渲染损失
-
-    multiview_supervise = 2  # 是否使用多视图监督，0表示不使用，N表示使用N对视图
-
-    # 模型参数
-    load_VGGT = True  # True 加载 VGGT 模型， False 加载 checkpoint
-    model_name = "facebook/VGGT-1B"
-    checkpoint = "pretrained/best_model_epoch_5_loss_0.2091.pt"
-    # checkpoint = None
-    only_load_mask_head = False  # 是否加载 mask_head
-
-    # 渲染设置 gsplat或者mipsplat
-    render_mode = "gsplat"
-    # render_mode = "mipsplat"
-
-    # 训练参数
-    lr = 1e-5 * sqrt(gpus_num)
-    epochs = 10
-    weight_decay = lr / 10
-    warmup_epochs = 0 if load_VGGT else 0
-    save_interval = epochs // 10
-    val_interval = epochs // 10
-    iter_save_interval = 2000  # 0表示关闭；>0表示每N个iter保存一次checkpoint
-
-    # 数据采样
-    data_sample_rate = None  # None or n, 均匀抽取1/n数据进行训练
-
-    # 模块激活情况
-    camera_head_activate = True  # 是否激活 camera_head
-    depth_head_activate = True  # 是否激活 depth_head
-    gs_para_head_activate = True  # 是否激活 gs_para_head
-    aggregator_activate = True  # 是否激活 aggregator
-    mask_head_activate = True  # 是否激活 mask_head
-
-    # mask使用策略
-    use_gt_mask_until_epoch = 20  # <=该epoch使用GT mask，之后使用预测mask
-
-    # Loss 激活情况
-    camera_loss_activate = True  # 是否使用姿态编码损失
-    distill_depth_loss_activate = True  # 是否使用深度蒸馏损失
-    render_loss_activate = True  # 是否使用渲染损失
-    mask_loss_activate = True  # 是否使用掩膜损失
-    color_dist_loss_activate = True  # 是否使用高斯球颜色分配损失
-    foreground_region_loss_activate = False  # 是否使用前景范围损失
-    depth_consist_loss_activate = False  # 是否使用深度一致性损失
-    distill_geo_loss_activate = False  # 是否使用几何蒸馏损失
-
-    # camera loss 稳定化参数（用于抑制单batch尖峰）
-    camera_loss_max_for_backward = 1e-2  # 对raw camera loss做上限裁剪；None表示不裁剪
-
-    # 设备配置
-    amp_enabled = True  # 自动混合精度
-    grad_clip = 1.0  # 梯度裁剪
-    reset_optimizer_lrs_on_resume = True  # 从checkpoint恢复optimizer后，是否按当前配置重置各参数组lr
+torch.backends.cudnn.benchmark = True
 
 
-def setup(rank, world_size):
-    """初始化分布式环境"""
-    os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '20008'
+def setup(rank, world_size, master_port=20008):
+    """Initialize distributed environment."""
+    os.environ["MASTER_ADDR"] = "localhost"
+    os.environ["MASTER_PORT"] = str(master_port)
     dist.init_process_group("nccl", rank=rank, world_size=world_size)
     torch.cuda.set_device(rank)
 
@@ -1100,11 +990,9 @@ def save_checkpoint(model, optimizer, scheduler, epoch, save_path):
     print(f"检查点已保存至 {save_path}")
 
 
-def main_worker(rank, world_size, config):
-    
-    """分布式训练工作函数"""
-    # 初始化分布式环境
-    setup(rank, world_size)
+def main_worker(rank, world_size, config, master_port=20008):
+    """Distributed training worker function."""
+    setup(rank, world_size, master_port=master_port)
     
     torch.random.manual_seed(100019 + rank)
     numpy.random.seed(100019 + rank)
@@ -1222,19 +1110,80 @@ def main_worker(rank, world_size, config):
 
 
 def main():
-    config = TrainingConfig()
+    import argparse
+
+    parser = argparse.ArgumentParser(description="HiReFF distributed training")
+    parser.add_argument("--data-root", type=str, required=True,
+                       help="Root directory of training NPZ data (e.g. /path/to/data)")
+    parser.add_argument("--checkpoint", type=str, default="checkpoints/checkpoint_dna_mvh_zju.pt",
+                       help="Path to pretrained checkpoint")
+    parser.add_argument("--epochs", type=int, default=10)
+    parser.add_argument("--lr", type=float, default=None, help="Learning rate (default: auto)")
+    parser.add_argument("--batch-size", type=int, default=0, help="Batch size per GPU (0=auto)")
+    parser.add_argument("--master-port", type=int, default=20008, help="DDP master port")
+    parser.add_argument("--img-size", type=int, default=518)
+    parser.add_argument("--sr-img-size", type=int, default=2072)
+    parser.add_argument("--render-mode", type=str, default="gsplat", choices=["gsplat", "mipsplat"])
+    parser.add_argument("--dataset-mode", type=str, default="mix", choices=["single", "mix"])
+    parser.add_argument("--single-dataset", type=str, default="mvhuman", choices=["dna", "zju", "mvhuman"])
+    parser.add_argument("--num-workers", type=int, default=4)
+    parser.add_argument("--warmup-epochs", type=int, default=0)
+    parser.add_argument("--save-interval", type=int, default=0, help="Epochs between checkpoints (0=auto)")
+    parser.add_argument("--val-interval", type=int, default=0, help="Epochs between validation (0=auto)")
+    parser.add_argument("--iter-save-interval", type=int, default=2000, help="Iterations between checkpoints (0=off)")
+    parser.add_argument("--grad-clip", type=float, default=1.0)
+    parser.add_argument("--no-amp", action="store_true", help="Disable automatic mixed precision")
+    args = parser.parse_args()
+
+    config = TrainingConfig(
+        data_root=args.data_root,
+        checkpoint=args.checkpoint,
+        epochs=args.epochs,
+        img_size=args.img_size,
+        sr_img_size=args.sr_img_size,
+        render_mode=args.render_mode,
+        dataset_mode=args.dataset_mode,
+        single_dataset=args.single_dataset,
+        num_workers=args.num_workers,
+        warmup_epochs=args.warmup_epochs,
+        iter_save_interval=args.iter_save_interval,
+        grad_clip=args.grad_clip,
+        master_port=args.master_port,
+        amp_enabled=not args.no_amp,
+    )
+    if args.lr is not None:
+        config.lr = args.lr
+    if args.batch_size > 0:
+        config.batch_size = args.batch_size
+    if args.save_interval > 0:
+        config.save_interval = args.save_interval
+    if args.val_interval > 0:
+        config.val_interval = args.val_interval
+
+    # Second-phase init for derived fields
+    from vggt.training.train_config import TrainingConfig as TC
+    # Re-trigger derived field computation
+    if config.batch_size == 0:
+        config.batch_size = 1 * config.gpus_num
+    if config.weight_decay is None:
+        config.weight_decay = config.lr / 10
+    if config.lr == 1e-5 and config.gpus_num > 0:
+        config.lr = 1e-5 * sqrt(config.gpus_num)
+    config.save_interval = max(1, config.epochs // 10) if args.save_interval == 0 else config.save_interval
+    config.val_interval = max(1, config.epochs // 10) if args.val_interval == 0 else config.val_interval
+
     print("Initializing...")
-
-    # 获取GPU数量
     world_size = torch.cuda.device_count()
-    print(f"使用 {world_size} 个GPU进行分布式训练")
+    print(f"Training on {world_size} GPUs (DDP)")
+    print(f"Data root: {config.data_root}")
+    print(f"Checkpoint: {config.checkpoint}")
+    print(f"Epochs: {config.epochs}, LR: {config.lr}, Batch size: {config.batch_size}")
 
-    # 启动多进程训练
     mp.spawn(
         main_worker,
-        args=(world_size, config),
+        args=(world_size, config, args.master_port),
         nprocs=world_size,
-        join=True
+        join=True,
     )
 
 

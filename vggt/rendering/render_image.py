@@ -21,7 +21,7 @@ from vggt.utils.voxelizaton_fusion import voxelizaton_with_fusion
 from gsplat import rasterization
 from math import sqrt
 
-data_root = "/home/china/lab/VGGT_human/vggt/vggt/"
+_data_root = os.path.dirname(os.path.abspath(__file__))
 
 
 def render_images_infer(model, loader, config, rank=None, inter_view=0, type="Interpolate"):
@@ -78,7 +78,7 @@ def get_all_poses(images, if_mapping=False, if_render_video=False):
     else:
         cam_para = "dna_rendering_cam_para.json"
 
-    dna_rendering_cam_para_path = os.path.join(data_root, f"rendering/{cam_para}")
+    dna_rendering_cam_para_path = os.path.join(_data_root, cam_para)
 
     # 加载原始相机参数
     with open(dna_rendering_cam_para_path, "r") as f:

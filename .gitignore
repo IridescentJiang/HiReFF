@@ -10,6 +10,8 @@ examples/
 output/
 render_images/
 runs/
+.gradio/
+.vscode/
 
 *.whl
 *.tar.bz2

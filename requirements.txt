@@ -1,5 +1,7 @@
-numpy==1.26.1
-Pillow
-huggingface_hub
-einops
-safetensors
+# HiReFF dependencies — for a full install use:
+#   pip install -e .[gsplat,train]
+#
+# Or for development:
+#   pip install -e .[gsplat,train,demo]
+#
+# See pyproject.toml for the canonical dependency list.

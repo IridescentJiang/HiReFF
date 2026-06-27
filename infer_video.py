@@ -1,202 +1,199 @@
-import os
-import sys
-import numpy as np
-import torch
-import glob
+"""Video rendering from NPZ sequences or image directories.
 
-import torchvision
-from matplotlib import pyplot as plt
-from torch import Stream, Tensor
+Supports two input formats:
+  1. ``npz`` — a directory of ``frame_XXXX.npz`` files (one per timestep).
+  2. ``frame_dir`` — a directory of individual image files per frame.
+
+Outputs an MP4 video and individual frame images.
+
+Example::
+
+    python infer_video.py \\
+        --data-root ./wild_images \\
+        --checkpoint-path ./checkpoints/8_view_input.pt \\
+        --input-views 0,3,5,8 \\
+        --inter-view 30 \\
+        --fps 18 \\
+        --output-dir output/videos
+"""
+
+from __future__ import annotations
+
+import argparse
+import glob
+import os
+
+import torch
 from torchvision.utils import save_image
 
-sys.path.append("vggt/")
-
-from vggt.models.vggt import VGGT
-from vggt.utils.load_fn import adjust_intrinsic_batch, convert_extrinsics_to_relative_tensor
-from vggt.rendering.render_image import batch_render_images, get_all_poses, image_to_video, \
-    interpolate_pose, adjust_transl
-from vggt.utils.pose_enc import pose_encoding_to_extri_intri, extri_intri_to_pose_encoding
-
-
-def load_model(device=None, checkpoint_path=None):
-    """Load and initialize the VGGT model."""
-    if device is None:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"Using device: {device}")
-
-    model = VGGT.from_checkpoint(checkpoint_path)
-
-    model.eval()
-    model = model.to(device)
-    return model, device
+from vggt.rendering.render_image import batch_render_images_my, image_to_video, interpolate_pose
+from vggt.utils.inference_utils import (
+    load_model,
+    parse_view_ids,
+    read_dna_npz_entry,
+    read_frame_dir_entry,
+    save_video_frames,
+)
 
 
-def read_dna_npz_entry(npz_path: str, view_ids: list[int]) -> tuple[
-    torch.Tensor, torch.Tensor, torch.Tensor]:
-    images = []
-    intrinsics = []
-    extrinsics = []
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
 
-    with np.load(npz_path, allow_pickle=True) as archive:
-        for view in view_ids:
-            data_key = f"view_{view:02d}"
-            if data_key not in archive:
-                raise KeyError(f"{data_key} not found in {npz_path}.")
-
-            entry = archive[data_key].item()
-
-            rgb_image = torchvision.io.decode_image(torch.from_numpy(entry["image"]),
-                                                    mode=torchvision.io.ImageReadMode.RGB).float() / 255.0
-
-            images.append(rgb_image)
-
-    images = torch.stack(images, dim=0)  # (n_views, 3, H, W)
-
-    return images, intrinsics, extrinsics
-
-
-def load_sample(seq_dir, target_size=1036):
-    """加载单个样本数据"""
-
-    images, intrinsics, extrinsics = (
-        read_dna_npz_entry(seq_dir, [int(v) for v in view_ids]))
-
-    origin_size = images.shape[2]
-    images = torch.nn.functional.interpolate(
-        images, size=(target_size, target_size), mode='bilinear', align_corners=False)
-
-    # 转换为numpy数组
-    data = {
-        "images": images
-    }
-
-    return data
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Video rendering from NPZ sequences or image directories")
+    parser.add_argument("--data-root", type=str, required=True,
+                       help="Root directory: either NPZ sequences or image frame directories")
+    parser.add_argument("--checkpoint-path", type=str, required=True,
+                       help="Path to model checkpoint (.pt)")
+    parser.add_argument("--output-dir", type=str, default="output/videos",
+                       help="Output directory for videos and frames")
+    parser.add_argument("--input-views", type=str, default="0,3,5,8",
+                       help="Comma-separated input view ids")
+    parser.add_argument("--input-format", type=str, default="auto",
+                       choices=["npz", "frame_dir", "auto"],
+                       help="Input format: npz, frame_dir, or auto-detect")
+    parser.add_argument("--inter-view", type=int, default=30,
+                       help="Number of interpolated views between adjacent input views")
+    parser.add_argument("--agg-input-size", type=int, default=518,
+                       help="Low-resolution input size")
+    parser.add_argument("--input-size", type=int, default=2072,
+                       help="High-resolution input size")
+    parser.add_argument("--render-size", type=int, default=2072,
+                       help="Render output resolution")
+    parser.add_argument("--fps", type=int, default=18,
+                       help="Frames per second for output video")
+    parser.add_argument("--max-npz-files", type=int, default=150,
+                       help="Max number of NPZ files to process per test_id (for npz format)")
+    parser.add_argument("--device", type=str, default=None,
+                       help="Device (cuda/cpu)")
+    parser.add_argument("--bg-color", type=str, default="1.0,1.0,1.0",
+                       help="Background colour as comma-separated R,G,B in [0,1]")
+    return parser.parse_args()
 
 
-def run_model(target_dir, model, device, input_size=518) -> tuple[dict, dict[str, Tensor]]:
-    """
-    Run the VGGT model on images in the 'target_dir/images' folder and return predictions.
-    """
-    # Load and preprocess images
-    data = load_sample(target_dir, input_size)
-    images = data["images"].to(device)
+def detect_input_format(input_path: str) -> str:
+    """Detect whether *input_path* contains NPZ files or frame directories."""
+    npz_files = glob.glob(os.path.join(input_path, "*.npz"))
+    if npz_files:
+        return "npz"
+    frame_dirs = [p for p in glob.glob(os.path.join(input_path, "*")) if os.path.isdir(p)]
+    if frame_dirs:
+        return "frame_dir"
+    return "none"
+
+
+def load_sample_npz(npz_path: str, view_ids: list[int], input_size: int, agg_input_size: int) -> dict:
+    """Load and resize images from a single NPZ file."""
+    images, _, _ = read_dna_npz_entry(npz_path, view_ids)
+    return _resize_images(images, input_size, agg_input_size)
+
+
+def load_sample_frames(frame_dir: str, view_ids: list[int], input_size: int, agg_input_size: int) -> dict:
+    """Load and resize images from a directory of frame images."""
+    images = read_frame_dir_entry(frame_dir, view_ids)
+    return _resize_images(images, input_size, agg_input_size)
+
+
+def _resize_images(images: torch.Tensor, input_size: int, agg_input_size: int) -> dict:
+    images_lr = torch.nn.functional.interpolate(
+        images, size=(agg_input_size, agg_input_size), mode="bilinear", align_corners=False,
+    )
+    images_hr = torch.nn.functional.interpolate(
+        images, size=(input_size, input_size), mode="bilinear", align_corners=False,
+    )
+    return {"images_lr": images_lr, "images_hr": images_hr}
+
+
+def run_model(data: dict, model, device: str) -> dict:
+    """Run the VGGT model on pre-loaded data."""
+    images_lr = data["images_lr"].unsqueeze(0).to(device)
+    images_hr = data["images_hr"].unsqueeze(0).to(device)
 
     with torch.no_grad():
-        predictions = model(images, if_train=False)
+        predictions = model(images_lr, images_hr, mask_gaussian=True, use_gt_mask=False, if_train=False)
 
-    predictions = {k: v for k, v in predictions.items()}
-
-    return predictions, data
+    return {k: v for k, v in predictions.items()}
 
 
-def save_render_images(images: np.array, save_path: str, test_model="ours", test_id="0000_00", frame="00", view=None):
-    if view is None:
-        view = [0]
+def main() -> None:
+    args = parse_args()
 
-    save_dir = os.path.join(save_path, test_id, f"{frame}_pred_{test_model}")
-    os.makedirs(save_dir, exist_ok=True)
+    view_ids = parse_view_ids(args.input_views)
+    model, device = load_model(checkpoint_path=args.checkpoint_path, device=args.device)
+    os.makedirs(args.output_dir, exist_ok=True)
 
-    # 批量保存（每个图像单独保存）
-    for b in range(images.size(0)):
-        filename = os.path.join(save_dir, f"{view[b]:02d}.png")
-        save_image(images[b], filename, normalize=False)
+    bg_values = [float(x.strip()) for x in args.bg_color.split(",")]
+    bg_color = torch.tensor(bg_values, dtype=torch.float32)
 
-    # print(f"Save images to {save_dir}")
-
-
-view_ids = [25, 37, 1, 13]
-novel_ids = [1, 4, 7, 10, 13, 16, 19, 22, 25, 28, 31, 34, 37, 40, 43, 46]
-
-
-def main():
-    test_path = "/home/china/lab/VGGT_human/experiment/test_data/dna_timeseq/video"
-    checkpoint_path = "./checkpoints/stage_3_plus.pt"
-    output_dir = "output/"
-    input_save_size = 518
-    input_size = 1036
-    render_size = 2072
-    bg_color = torch.tensor([1.0, 1.0, 1.0])
-    render_mode = 'gsplat'
-
-    model, device = load_model(device=None, checkpoint_path=checkpoint_path)
-    os.makedirs(output_dir, exist_ok=True)
-
-    for test_id in os.listdir(test_path):
-        rendered_images_f = []
-        rendered_images_b = []
-        input_views_list = []
-        input_masks_list = []
-        test_model = "ours"
-        pose_enc = None
-        inter_view = 60  # 每两个相邻视角之间插入N个新视角
-        input_path = os.path.join(test_path, test_id)
+    test_ids = sorted(os.listdir(args.data_root))
+    for test_id in test_ids:
+        input_path = os.path.join(args.data_root, test_id)
         if not os.path.isdir(input_path):
             continue
 
-        npz_files = glob.glob(os.path.join(input_path, "*.npz"))
+        # Determine input format
+        if args.input_format == "auto":
+            input_format = detect_input_format(input_path)
+        else:
+            input_format = args.input_format
 
-        for i, npz_file in enumerate(sorted(npz_files)):
-            if i == 0 or i > 150:
+        # Collect sample entries
+        if input_format == "npz":
+            npz_files = sorted(glob.glob(os.path.join(input_path, "*.npz")))
+            sample_entries = [("npz", p) for p in npz_files]
+        elif input_format == "frame_dir":
+            frame_dirs = sorted([p for p in glob.glob(os.path.join(input_path, "*")) if os.path.isdir(p)])
+            sample_entries = [("frame_dir", p) for p in frame_dirs]
+        else:
+            print(f"Skipping {test_id}: no recognised input format found")
+            continue
+
+        rendered_images_f = []
+        pose_enc = None
+        inter_view = args.inter_view
+
+        for i, (fmt, sample_path) in enumerate(sample_entries):
+            # For NPZ format, only process first frame and up to max_npz_files
+            if fmt == "npz" and (i == 0 or i > args.max_npz_files):
                 continue
-            preds, data = run_model(npz_file, model, device, input_size=input_size)
 
+            if fmt == "npz":
+                data = load_sample_npz(sample_path, view_ids, args.input_size, args.agg_input_size)
+            else:
+                data = load_sample_frames(sample_path, view_ids, args.input_size, args.agg_input_size)
+
+            preds = run_model(data, model, device)
+
+            # Initialise the smooth trajectory from the first frame's predicted poses
             if pose_enc is None:
                 pose_enc = preds["pose_enc_pre"].float()
-                # 交换pose_enc的第二个维度为 3 0 1 2
-                pose_enc = pose_enc[:, [3, 0, 1, 2], :]
                 pose_enc = interpolate_pose(pose_enc, inter_view=inter_view).to(device)
+
             _, lens, _ = pose_enc.shape
-
             preds["pose_enc"] = pose_enc[:, i % lens, :].unsqueeze(1)
-            rendered_image_f, _ = batch_render_images(preds, wo_bg=True, render_mode=render_mode,
-                                                     bg_color=bg_color, sr_image_size=render_size)
 
-            # preds["pose_enc"] = pose_enc[:, (i + int(lens / 2)) % lens, :].unsqueeze(1)
-            # rendered_image_b, _ = batch_render_images(preds, wo_bg=True, render_mode=render_mode,
-            #                                          bg_color=bg_color, sr_image_size=render_size)
+            view_count = preds["pose_enc"].shape[1]
+            bg = bg_color.view(1, 1, 3).to(device).expand(1, view_count, 3).contiguous()
 
-            # preds["pose_enc"] = pose_enc[:, i % lens, :].unsqueeze(1)
-            # rendered_image_b, _ = batch_render_images(preds, wo_bg=True, render_mode=render_mode,
-            #                                          bg_color=bg_color, sr_image_size=render_size)
-
-            # 输出视频原图
-            # ds_images = []
-            # for image in data["images"]:
-            #     ds_image = torch.nn.functional.interpolate(image.unsqueeze(0),
-            #                                                size=(input_save_size, input_save_size),
-            #                                                mode='bilinear',
-            #                                                align_corners=False)
-            #     ds_images.append(ds_image)
-            # all_images = torch.cat(ds_images, dim=2)
-
-            # all_masks = preds["masks"].squeeze(0).permute(0, 3, 1, 2).reshape(1, 1, -1, 1036)
-
-            # input_masks_list.append(all_masks.squeeze(0).cpu().detach())
-            # input_views_list.append(all_images.squeeze(0).cpu().detach())
+            rendered_image_f, _ = batch_render_images_my(
+                preds, wo_bg=True, sr_image_size=args.render_size, bg_color=bg,
+            )
             rendered_images_f.append(rendered_image_f.squeeze(0).cpu().detach())
-            # rendered_images_b.append(rendered_image_b.squeeze(0).cpu().detach())
 
-            frame = os.path.splitext(os.path.basename(npz_file))[0]
-            print("Processing: ", test_id, frame)
+            frame_name = os.path.splitext(os.path.basename(sample_path))[0] if fmt == "npz" else os.path.basename(sample_path)
+            print(f"Processing: {test_id} {frame_name}")
 
-            # save_render_images(images=all_images.detach().cpu().clone(),
-            #                    save_path=output_dir,
-            #                    test_model=test_model,
-            #                    frame=frame,
-            #                    test_id=test_id,
-            #                    view=view_ids + novel_ids)
+        if not rendered_images_f:
+            print(f"No rendered frames for {test_id}, skip output.")
+            continue
 
-        # video_path = os.path.join(output_dir, f"rendered_video_{test_id}_masks.mp4")
-        # image_to_video(torch.stack(input_masks_list), video_path, fps=18)
-
-        # video_path = os.path.join(output_dir, f"rendered_video_{test_id}_input.mp4")
-        # image_to_video(torch.stack(input_views_list), video_path, fps=18)
-
-        video_path = os.path.join(output_dir, f"rendered_video_{test_id}_front.mp4")
-        image_to_video(torch.stack(rendered_images_f), video_path, fps=18)
-
-        # video_path = os.path.join(output_dir, f"rendered_video_{test_id}_back.mp4")
-        # image_to_video(torch.stack(rendered_images_b), video_path, fps=18)
+        rendered_images = torch.stack(rendered_images_f)
+        video_path = os.path.join(args.output_dir, f"rendered_video_{test_id}.mp4")
+        image_to_video(rendered_images, video_path, fps=args.fps)
+        frame_dir = save_video_frames(rendered_images, video_path)
+        print(f"Saved video: {video_path}")
+        print(f"Saved frames: {frame_dir}")
 
 
 if __name__ == "__main__":

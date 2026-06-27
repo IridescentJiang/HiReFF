@@ -12,13 +12,6 @@
 import torch
 import math
 import numpy as np
-# from diff_gaussian_rasterization import GaussianRasterizationSettings, GaussianRasterizer
-
-# from diff_gaussian_rasterization_feature import GaussianRasterizer as GaussianRasterizer16
-# from diff_surfel_rasterization import GaussianRasterizer as GaussianRasterizer2D
-# from diff_surfel_rasterization import GaussianRasterizationSettings as GaussianRasterizationSettings2D
-# from diff_gaussian_rasterization_turandai import GaussianRasterizer as GaussianRasterizer2D
-# from diff_gaussian_rasterization_turandai import GaussianRasterizationSettings as GaussianRasterizationSettings2D
 
 
 def gaussian_render(cam_param, pts_xyz, pts_rgb, rotations, scales, opacity, bg_color, feature=False):
@@ -31,22 +24,8 @@ def gaussian_render(cam_param, pts_xyz, pts_rgb, rotations, scales, opacity, bg_
     device = pts_xyz.device
     bg_color = torch.tensor(bg_color, dtype=torch.float32, device=device)
 
-    # import numpy as np
-    # pts_save = pts_xyz.cpu().numpy()
-    # color_save = (pts_rgb[:, :3] + pts_rgb[:, 3:6] + pts_rgb[:, 6:9] + pts_rgb[:, 9:12]).detach().cpu().numpy()
-    # color_save -= np.min(color_save, axis=1, keepdims=True)
-    # color_save /= np.max(color_save, axis=1, keepdims=True)
-    # with open("D:/floren/RealtimeFloRen/debug/pipeline_draw/pts_save.obj", "w") as f:
-    #     for i in range(pts_save.shape[0]):
-    #         f.write("v %f %f %f %f %f %f\n" % (pts_save[i, 0], pts_save[i, 1], pts_save[i, 2], color_save[i, 0], color_save[i, 1], color_save[i, 2]))
-    # exit()
-
-    # Create zero tensor. We will use it to make pytorch return gradients of the 2D (screen-space) means
+    # Create zero tensor for screen-space means (used by rasterizer for gradient computation)
     screenspace_points = torch.zeros_like(pts_xyz, dtype=torch.float32, requires_grad=True, device=device) + 0
-    # try:
-    #     screenspace_points.retain_grad()
-    # except:
-    #     pass
 
     # Set up rasterization configuration
     tanfovx = math.tan(cam_param['FovX'] * 0.5)
@@ -91,53 +70,6 @@ def gaussian_render(cam_param, pts_xyz, pts_rgb, rotations, scales, opacity, bg_
 
     return rendered_image
 
-
-# def render2D(cam_param, pts_xyz, pts_clr, rotations, scales, opacity, bg_color, sh=True, return_depth=False):
-#     bg_color = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
-#
-#     # Create zero tensor. We will use it to make pytorch return gradients of the 2D (screen-space) means
-#     screenspace_points = torch.zeros_like(pts_xyz, dtype=torch.float32, requires_grad=True, device="cuda") + 0
-#
-#     # Set up rasterization configuration
-#     tanfovx = math.tan(cam_param['FovX'] * 0.5)
-#     tanfovy = math.tan(cam_param['FovY'] * 0.5)
-#
-#     # print(cam_param['full_proj_transform'])
-#
-#     raster_settings = GaussianRasterizationSettings2D(
-#         image_height=int(cam_param['height']),
-#         image_width=int(cam_param['width']),
-#         tanfovx=tanfovx,
-#         tanfovy=tanfovy,
-#         bg=bg_color,
-#         scale_modifier=1.0,
-#         viewmatrix=cam_param['world_view_transform'],
-#         projmatrix=cam_param['full_proj_transform'],
-#         # prcppoint=cam_param['prcp_point'],
-#         # patch_bbox=cam_param['patch_bbox'],
-#         sh_degree=3,
-#         campos=cam_param['camera_center'],
-#         prefiltered=False,
-#         debug=False
-#     )
-#
-#     rasterizer = GaussianRasterizer2D(raster_settings=raster_settings)
-#
-#     # Rasterize visible Gaussians to image, obtain their radii (on screen).
-#     rendered_image, radii, rendered_depth = rasterizer(
-#         means3D=pts_xyz,            # [N, 3]
-#         means2D=screenspace_points,
-#         shs=pts_clr if sh else None,
-#         colors_precomp=pts_clr if not sh else None,     # [N, 3]
-#         opacities=opacity,          # 0.5左右
-#         scales=scales,              # 几乎接近0, 0.002左右
-#         rotations=rotations,
-#         cov3D_precomp=None)
-#
-#     # Those Gaussians that were frustum culled or had a radius of 0 were not visible.
-#     # They will be excluded from value updates used in the splitting criteria.
-#
-#     return rendered_image
 
 def focal2fov(focal, pixels):
     return 2 * math.atan(pixels / (2 * focal))
