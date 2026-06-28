@@ -27,20 +27,14 @@ Core dependencies are in `pyproject.toml`. `requirements.txt` is a pointer to it
 # Training (DDP, all available GPUs)
 python train_npz.py --data-root /path/to/data --epochs 10
 
-# Inference — multi-view (reads NPZ files)
-python infer_multiview.py --data-root <dir> --checkpoint-path <path>
-
-# Inference — single frame GT comparison
-python infer_frame.py --data-root <dir> --checkpoint-path <path> --target-view 25
+# Inference — multi-view rendering (primary entry point)
+python infer.py --data-root <dir> --checkpoint-path <path> --input-views 25,1,13,37 --novel-views 1,4,7,10
 
 # Inference — 360-degree video
 python infer_360_video.py --data-root <dir> --checkpoint-path <path>
 
 # Inference — video (NPZ or image directory)
 python infer_video.py --data-root <dir> --checkpoint-path <path>
-
-# Inference — speed benchmark
-python infer_speed.py --data-root <dir> --checkpoint-path <path>
 ```
 
 All inference scripts use `argparse`. Training is configured via `TrainingConfig` in `vggt/training/train_config.py` with command-line overrides.
@@ -86,9 +80,11 @@ Pipeline:
 
 ### Inference Scripts
 
-All five scripts share utilities in `vggt/utils/inference_utils.py` (`load_model`, `parse_view_ids`, `collect_npz_files`, `read_dna_npz_entry`, `save_render_images`, etc.).
+All three scripts share utilities in `vggt/utils/inference_utils.py` (`load_model`, `parse_view_ids`, `collect_npz_files`, `read_dna_npz_entry`, `save_render_images`, etc.).
 
-Scripts differ by input type: multi-view NPZ, single-frame, 360° interpolation, video sequences, or speed benchmarking.
+- `infer.py`: Primary entry point. Given sparse input views, predicts Gaussians and renders novel views from NPZ files.
+- `infer_360_video.py`: 360° rendering with Slerp/orbit interpolation between anchor views.
+- `infer_video.py`: Video from NPZ sequences or image directories with smooth trajectory interpolation.
 
 ## Key Design Decisions
 
