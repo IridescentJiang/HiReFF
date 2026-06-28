@@ -167,14 +167,14 @@ Training uses PyTorch Distributed Data Parallel (DDP) across all available GPUs:
 
 ```bash
 # Mixed-dataset training (DNA + ZJU + MVHuman)
-python train_npz.py \
+python train.py \
     --data-root /path/to/training_data \
     --checkpoint ./checkpoints/checkpoint_dna_mvh_zju.pt \
     --epochs 10 \
     --dataset-mode mix
 
 # Single-dataset fine-tuning
-python train_npz.py \
+python train.py \
     --data-root /path/to/data \
     --checkpoint ./checkpoints/checkpoint_dna_mvh_zju.pt \
     --epochs 5 \
@@ -185,7 +185,7 @@ python train_npz.py \
 To control which GPUs to use, set `CUDA_VISIBLE_DEVICES`:
 
 ```bash
-CUDA_VISIBLE_DEVICES=0,1,2,3 python train_npz.py --data-root /path/to/data
+CUDA_VISIBLE_DEVICES=0,1,2,3 python train.py --data-root /path/to/data
 ```
 
 ### Key Training Arguments
@@ -220,7 +220,7 @@ vggt/
   training/      — Loss functions, LPIPS, dataset classes, training config
   utils/         — Pose encoding, geometry, depth unprojection, inference helpers
 infer_*.py       — Inference scripts (multiview, frame, video, 360, speed)
-train_npz.py     — DDP training entry point
+train.py     — DDP training entry point
 docs/            — Additional documentation
 ```
 

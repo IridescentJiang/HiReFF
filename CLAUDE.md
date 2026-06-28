@@ -25,7 +25,7 @@ Core dependencies are in `pyproject.toml`. `requirements.txt` is a pointer to it
 
 ```bash
 # Training (DDP, all available GPUs)
-python train_npz.py --data-root /path/to/data --epochs 10
+python train.py --data-root /path/to/data --epochs 10
 
 # Inference — multi-view rendering (primary entry point)
 python infer.py --data-root <dir> --checkpoint-path <path> --input-views 25,1,13,37 --novel-views 1,4,7,10
@@ -61,7 +61,7 @@ Pipeline:
 - `render_image.py`: Core pipeline. Converts pose encodings → extrinsics/intrinsics, then calls `gsplat.rasterization()` for differentiable rendering. Active render functions: `batch_render_images_my()` → `vectorized_gaussian_render_gsplat_my()`.
 - `camera_mapping.py`: Maps between dataset camera spaces and VGGT's normalized prediction space.
 
-### Training (`train_npz.py`)
+### Training (`train.py`)
 
 - **Config**: `TrainingConfig` dataclass in `vggt/training/train_config.py`. All fields overridable via CLI args.
 - **Data**: NPZ files from DNA-Rendering (48 views), ZJU-MoCap (24 views), MVHuman (16 views).

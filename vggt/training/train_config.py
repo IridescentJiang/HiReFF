@@ -1,6 +1,6 @@
 """Training configuration for HiReFF.
 
-All defaults can be overridden by command-line arguments in ``train_npz.py``.
+All defaults can be overridden by command-line arguments in ``train.py``.
 """
 
 from __future__ import annotations

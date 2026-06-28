@@ -27,7 +27,7 @@ def load_model(checkpoint_path: str, device: str | None = None) -> tuple[VGGT, s
     """Load a VGGT model from a local checkpoint file.
 
     Args:
-        checkpoint_path: Path to a ``.pt`` checkpoint saved by ``train_npz.py``.
+        checkpoint_path: Path to a ``.pt`` checkpoint saved by ``train.py``.
         device: Target device (``"cuda"``, ``"cpu"``, etc.). Auto-detected when None.
 
     Returns:
