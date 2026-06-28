@@ -94,21 +94,7 @@ python infer.py \
     --output-dir output/multiview
 ```
 
-#### 2. 360° Video Rendering (`infer_360_video.py`)
-
-Generates smooth camera trajectories with Slerp or orbital interpolation between anchor views.
-
-```bash
-python infer_360_video.py \
-    --data-root ./test_data \
-    --checkpoint-path ./checkpoints/checkpoint_dna_mvh_zju.pt \
-    --input-views 25,1,13,37 \
-    --inter-views-between 4 \
-    --interpolation-mode orbit \
-    --output-dir output/multiview
-```
-
-#### 3. Video from Sequences (`infer_video.py`)
+#### 2. Video from Sequences (`infer_video.py`)
 
 Processes NPZ sequences or directories of images and outputs MP4 videos with smooth trajectory interpolation.
 
@@ -230,7 +216,6 @@ vggt/
   training/      — Loss functions, LPIPS, dataset classes, training config
   utils/         — Pose encoding, geometry, depth unprojection, inference helpers
 infer.py         — Primary inference entry point
-infer_360_video.py — 360° multi-view rendering with camera interpolation
 infer_video.py   — Video rendering from NPZ sequences or image directories
 train.py         — DDP training entry point
 preprocessing/   — Dataset conversion scripts (DNA / ZJU / MVHuman)

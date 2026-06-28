@@ -30,9 +30,6 @@ python train.py --data-root /path/to/data --epochs 10
 # Inference — multi-view rendering (primary entry point)
 python infer.py --data-root <dir> --checkpoint-path <path> --input-views 25,1,13,37 --novel-views 1,4,7,10
 
-# Inference — 360-degree video
-python infer_360_video.py --data-root <dir> --checkpoint-path <path>
-
 # Inference — video (NPZ or image directory)
 python infer_video.py --data-root <dir> --checkpoint-path <path>
 ```
@@ -84,7 +81,6 @@ Pipeline:
 All three scripts share utilities in `vggt/utils/inference_utils.py` (`load_model`, `parse_view_ids`, `collect_npz_files`, `read_dna_npz_entry`, `save_render_images`, etc.).
 
 - `infer.py`: Primary entry point. Given sparse input views, predicts Gaussians and renders novel views from NPZ files.
-- `infer_360_video.py`: 360° rendering with Slerp/orbit interpolation between anchor views.
 - `infer_video.py`: Video from NPZ sequences or image directories with smooth trajectory interpolation.
 
 ## Key Design Decisions
