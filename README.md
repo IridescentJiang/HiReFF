@@ -73,11 +73,9 @@ python -c "from vggt import VGGT; print('Install OK')"
 The model is initialised from the **VGGT-1B** pretrained weights (`facebook/VGGT-1B` on HuggingFace),
 then fine-tuned on human datasets.
 
-| Checkpoint | Description |
-|---|---|
-| `checkpoint_dna_mvh_zju.pt` | Fine-tuned on DNA-Rendering + ZJU-MoCap + MVHuman |
-
-*Fine-tuned checkpoint available on ModelScope (link coming soon).*
+| Checkpoint | Description | Download |
+|---|---|---|
+| `checkpoint_dna_mvh_zju.pt` | Fine-tuned on DNA-Rendering + ZJU-MoCap + MVHuman | coming soon |
 
 ### Available Scripts
 
