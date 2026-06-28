@@ -22,15 +22,6 @@ dependencies = [
 [project.optional-dependencies]
 gsplat = ["gsplat>=1.0.0"]
 train = ["tensorboard", "tqdm"]
-demo = [
-    "gradio>=5.17",
-    "viser>=0.2",
-    "trimesh",
-    "matplotlib",
-    "requests",
-    "hydra-core",
-    "omegaconf",
-]
 
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]

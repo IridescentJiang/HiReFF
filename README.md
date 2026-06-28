@@ -36,9 +36,6 @@ pip install torch==2.5.0 torchvision==0.20.0 --index-url https://download.pytorc
 # 2. Core install (inference + training)
 pip install -e .[gsplat,train]
 
-# 3. Optional: demo / GUI support (Gradio + Viser)
-pip install -e .[demo]
-
 # Verify
 python -c "from vggt import VGGT; print('Install OK')"
 ```
