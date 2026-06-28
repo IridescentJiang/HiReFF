@@ -44,15 +44,14 @@ python -c "from vggt import VGGT; print('Install OK')"
 
 ##  Model Inference
 
-### Download Checkpoints
+### Checkpoints
 
-Download pretrained checkpoints and place them under `checkpoints/`:
+The model is initialised from the **VGGT-1B** pretrained weights (`facebook/VGGT-1B` on HuggingFace),
+then fine-tuned on human datasets:
 
 | Checkpoint | Description |
 |---|---|
-| `checkpoint_dna_mvh_zju.pt` | Main model trained on DNA-Rendering + ZJU-MoCap + MVHuman |
-| `checkpoint_finetune.pt` | Fine-tuned variant |
-| `8_view_input.pt` | 8-view input variant |
+| `checkpoint_dna_mvh_zju.pt` | Fine-tuned on DNA-Rendering + ZJU-MoCap + MVHuman |
 
 ### Available Scripts
 
@@ -131,20 +130,26 @@ See [docs/data_preparation.md](docs/data_preparation.md) for the full specificat
 
 ### Running Training
 
-Training uses PyTorch Distributed Data Parallel (DDP) across all available GPUs:
+Training uses PyTorch Distributed Data Parallel (DDP) across all available GPUs.
+Training starts from the **VGGT-1B** pretrained model by default, with optional
+resume from a checkpoint:
 
 ```bash
-# Mixed-dataset training (DNA + ZJU + MVHuman)
+# Start from VGGT-1B pretrained model (HuggingFace)
+python train.py \
+    --data-root /path/to/training_data \
+    --epochs 10 \
+    --dataset-mode mix
+
+# Resume from a previous HiReFF checkpoint
 python train.py \
     --data-root /path/to/training_data \
     --checkpoint ./checkpoints/checkpoint_dna_mvh_zju.pt \
-    --epochs 10 \
-    --dataset-mode mix
+    --epochs 10
 
 # Single-dataset fine-tuning
 python train.py \
     --data-root /path/to/data \
-    --checkpoint ./checkpoints/checkpoint_dna_mvh_zju.pt \
     --epochs 5 \
     --dataset-mode single \
     --single-dataset mvhuman
@@ -161,7 +166,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 python train.py --data-root /path/to/data
 | Argument | Default | Description |
 |---|---|---|
 | `--data-root` | (required) | Root directory of training NPZ data |
-| `--checkpoint` | `checkpoints/checkpoint_dna_mvh_zju.pt` | Pretrained checkpoint path |
+| `--checkpoint` | (VGGT-1B from HuggingFace) | Checkpoint to load / resume from |
 | `--epochs` | 10 | Number of training epochs |
 | `--lr` | auto | Learning rate (auto-scaled by GPU count) |
 | `--batch-size` | 1 per GPU | Batch size per GPU |

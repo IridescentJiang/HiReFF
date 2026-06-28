@@ -63,6 +63,7 @@ Pipeline:
 
 ### Training (`train.py`)
 
+- **Pretrained model**: Training starts from VGGT-1B (`facebook/VGGT-1B` on HuggingFace) by default. Set `load_VGGT=True` in config or pass `--checkpoint` to resume from a HiReFF checkpoint.
 - **Config**: `TrainingConfig` dataclass in `vggt/training/train_config.py`. All fields overridable via CLI args.
 - **Data**: NPZ files from DNA-Rendering (48 views), ZJU-MoCap (24 views), MVHuman (16 views).
 - **Dataset classes**: `DnaRenderingDatasetNpz`, `ZjuMocapDatasetNpz`, `MvHumanDatasetNpz` in `vggt/training/data/datasets/`.
@@ -92,5 +93,5 @@ All three scripts share utilities in `vggt/utils/inference_utils.py` (`load_mode
 - **Gaussian parameter channels**: opacity(1) + scale(3) + rotation(4) + color(3 × (sh_degree+1)²). With `sh_degree=0` → 11 channels.
 - **Background**: White (1.0) default for training and rendering.
 - **Image sizes**: Aggregator = 518×518, super-resolution/rendering = 2072×2072.
-- **Checkpoint format**: PyTorch `.pt` with `model_state` or `state_dict` key, `module.` prefix stripped for DDP.
+- **Checkpoint format**: PyTorch `.pt` with `model_state` or `state_dict` key, `module.` prefix stripped for DDP. The VGGT-1B pretrained weights are loaded from HuggingFace (`facebook/VGGT-1B`) when `load_VGGT=True`.
 - **NPZ data format**: Each view stored as `view_XX` with keys: `image` (JPEG bytes), `mask` (PNG bytes), `intrinsic` (3×3), `extrinsic` (4×4 camera-to-world). See `docs/data_preparation.md`.
