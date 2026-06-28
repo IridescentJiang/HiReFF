@@ -164,21 +164,14 @@ See [docs/data_preparation.md](docs/data_preparation.md) for the full NPZ format
 ### Running Training
 
 Training uses PyTorch Distributed Data Parallel (DDP) across all available GPUs.
-Training starts from the **VGGT-1B** pretrained model by default, with optional
-resume from a checkpoint:
 
 ```bash
-# Start from VGGT-1B pretrained model (HuggingFace)
-python train.py \
-    --data-root /path/to/training_data \
-    --epochs 10 \
-    --dataset-mode mix
-
-# Resume from a previous HiReFF checkpoint
+# Multi-dataset training (resume from checkpoint)
 python train.py \
     --data-root /path/to/training_data \
     --checkpoint ./checkpoints/checkpoint_dna_mvh_zju.pt \
-    --epochs 10
+    --epochs 10 \
+    --dataset-mode mix
 
 # Single-dataset fine-tuning
 python train.py \
@@ -199,13 +192,18 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 python train.py --data-root /path/to/data
 | Argument | Default | Description |
 |---|---|---|
 | `--data-root` | (required) | Root directory of training NPZ data |
-| `--checkpoint` | (VGGT-1B from HuggingFace) | Checkpoint to load / resume from |
+| `--checkpoint` | `checkpoints/checkpoint_dna_mvh_zju.pt` | Checkpoint to load / resume from |
+| `--dataset-mode` | `mix` | `single` or `mix` |
+| `--single-dataset` | `mvhuman` | Dataset for single mode: `dna`, `zju`, or `mvhuman` |
 | `--epochs` | 10 | Number of training epochs |
-| `--lr` | auto | Learning rate (auto-scaled by GPU count) |
-| `--batch-size` | 1 per GPU | Batch size per GPU |
-| `--dataset-mode` | mix | `single` or `mix` |
-| `--render-mode` | gsplat | `gsplat` or `mipsplat` |
+| `--lr` | auto | Learning rate (scaled by GPU count) |
+| `--batch-size` | auto (1 per GPU) | Batch size per GPU |
+| `--img-size` | 518 | Aggregator input size |
+| `--sr-img-size` | 2072 | Super-resolution / render size |
+| `--render-mode` | `gsplat` | `gsplat` or `mipsplat` |
+| `--warmup-epochs` | 0 | Learning rate warmup epochs |
 | `--master-port` | 20008 | DDP master port |
+| `--no-amp` | off | Disable automatic mixed precision |
 
 ### Monitoring
 
