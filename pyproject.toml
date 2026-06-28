@@ -5,7 +5,7 @@ authors = [{name = "Jianyuan Wang", email = "jianyuan@robots.ox.ac.uk"}]
 requires-python = ">= 3.10"
 version = "0.1.0"
 dependencies = [
-    "numpy<2",
+    "numpy",
     "Pillow",
     "huggingface_hub",
     "einops",

@@ -29,20 +29,20 @@ rendering without per-subject optimisation.
 git clone https://github.com/IridescentJiang/HiReFF.git
 cd HiReFF
 
-# Core install (inference + training)
+# 1. Install PyTorch first (match your CUDA version)
+#    This project was developed with torch 2.5 + CUDA 11.8:
+pip install torch==2.5.0 torchvision==0.20.0 --index-url https://download.pytorch.org/whl/cu118
+
+# 2. Core install (inference + training)
 pip install -e .[gsplat,train]
 
-# Optional: demo / GUI support (Gradio + Viser)
+# 3. Optional: demo / GUI support (Gradio + Viser)
 pip install -e .[demo]
 
 # Verify
 python -c "from vggt import VGGT; print('Install OK')"
 ```
 
-> **Note:** PyTorch and torchvision should be installed separately to match
-> your CUDA version. See [pytorch.org](https://pytorch.org) for the correct
-> command. The `pyproject.toml` lists them as dependencies but you may want to
-> pre-install them with the right CUDA index.
 
 ---
 
