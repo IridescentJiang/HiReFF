@@ -95,3 +95,4 @@ All three scripts share utilities in `vggt/utils/inference_utils.py` (`load_mode
 - **Image sizes**: Aggregator = 518×518, super-resolution/rendering = 2072×2072.
 - **Checkpoint format**: PyTorch `.pt` with `model_state` or `state_dict` key, `module.` prefix stripped for DDP. The VGGT-1B pretrained weights are loaded from HuggingFace (`facebook/VGGT-1B`) when `load_VGGT=True`.
 - **NPZ data format**: Each view stored as `view_XX` with keys: `image` (JPEG bytes), `mask` (PNG bytes), `intrinsic` (3×3), `extrinsic` (4×4 camera-to-world). See `docs/data_preparation.md`.
+- **Preprocessing**: Conversion scripts for DNA-Rendering, ZJU-MoCap, and MVHuman datasets are in `preprocessing/`. Each subdirectory has its own README.

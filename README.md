@@ -146,11 +146,18 @@ See [docs/data_preparation.md](docs/data_preparation.md) for details.
 
 ### Data Preparation
 
-Training requires NPZ files with the same structure as inference, plus:
-- `mask` — PNG-encoded foreground mask
-- Directory layout: `{data_root}/{dna-rendering,zju-mocap,mvhuman}/{subject}/frame_XXXX.npz`
+Training requires NPZ files with the same structure as inference, plus a `mask` key
+(PNG-encoded foreground mask). The directory layout is:
 
-See [docs/data_preparation.md](docs/data_preparation.md) for the full specification and example conversion scripts.
+```
+{data_root}/{dna-rendering,zju-mocap,mvhuman}/{subject}/frame_XXXX.npz
+```
+
+Preprocessing scripts for converting from DNA-Rendering, ZJU-MoCap, and MVHuman
+datasets are provided in `preprocessing/`. See each subdirectory's `README.md`
+for instructions. A sample subset is included under `data/`.
+
+See [docs/data_preparation.md](docs/data_preparation.md) for the full NPZ format specification.
 
 ### Running Training
 
@@ -220,6 +227,7 @@ infer.py         — Primary inference entry point
 infer_360_video.py — 360° multi-view rendering with camera interpolation
 infer_video.py   — Video rendering from NPZ sequences or image directories
 train.py         — DDP training entry point
+preprocessing/   — Dataset conversion scripts (DNA / ZJU / MVHuman)
 docs/            — Additional documentation
 ```
 
