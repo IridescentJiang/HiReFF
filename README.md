@@ -166,7 +166,13 @@ See [docs/data_preparation.md](docs/data_preparation.md) for the full NPZ format
 Training uses PyTorch Distributed Data Parallel (DDP) across all available GPUs.
 
 ```bash
-# Multi-dataset training (resume from checkpoint)
+# Multi-dataset training (starts from VGGT-1B pretrained weights)
+python train.py \
+    --data-root /path/to/training_data \
+    --epochs 10 \
+    --dataset-mode mix
+
+# Resume from a HiReFF checkpoint
 python train.py \
     --data-root /path/to/training_data \
     --checkpoint ./checkpoints/checkpoint_dna_mvh_zju.pt \
@@ -192,7 +198,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 python train.py --data-root /path/to/data
 | Argument | Default | Description |
 |---|---|---|
 | `--data-root` | (required) | Root directory of training NPZ data |
-| `--checkpoint` | `checkpoints/checkpoint_dna_mvh_zju.pt` | Checkpoint to load / resume from |
+| `--checkpoint` | (VGGT-1B from HuggingFace) | Checkpoint to resume from |
 | `--dataset-mode` | `mix` | `single` or `mix` |
 | `--single-dataset` | `mvhuman` | Dataset for single mode: `dna`, `zju`, or `mvhuman` |
 | `--epochs` | 10 | Number of training epochs |

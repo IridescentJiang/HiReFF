@@ -63,9 +63,9 @@ class TrainingConfig:
     multiview_supervise: int = 2
 
     # ---- Model ----
-    load_VGGT: bool = False
+    load_VGGT: bool = True
     model_name: str = "facebook/VGGT-1B"
-    checkpoint: str = "checkpoints/checkpoint_dna_mvh_zju.pt"
+    checkpoint: str | None = None
     only_load_mask_head: bool = False
     render_mode: str = "gsplat"  # gsplat or mipsplat
 

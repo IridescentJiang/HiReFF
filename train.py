@@ -1077,8 +1077,8 @@ def main():
     parser = argparse.ArgumentParser(description="HiReFF distributed training")
     parser.add_argument("--data-root", type=str, required=True,
                        help="Root directory of training NPZ data (e.g. /path/to/data)")
-    parser.add_argument("--checkpoint", type=str, default="checkpoints/checkpoint_dna_mvh_zju.pt",
-                       help="Path to pretrained checkpoint")
+    parser.add_argument("--checkpoint", type=str, default=None,
+                       help="Path to checkpoint to resume from (default: load VGGT-1B from HuggingFace)")
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--lr", type=float, default=None, help="Learning rate (default: auto)")
     parser.add_argument("--batch-size", type=int, default=0, help="Batch size per GPU (0=auto)")
