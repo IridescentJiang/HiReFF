@@ -1,17 +1,32 @@
-# HiReFF: 4D Gaussian Human Reconstruction via VGGT
+# HiReFF: High-Resolution Feedforward Human Reconstruction from Uncalibrated Sparse-View Video
 
-**HiReFF** reconstructs animatable 3D Gaussian human avatars from sparse
-multi-view images in a single forward pass. It extends [VGGT](https://github.com/facebookresearch/vggt)
-with a Gaussian Splatting head that predicts per-pixel 3D Gaussian parameters
-(position, opacity, scale, rotation, colour), enabling high-quality novel-view
-rendering without per-subject optimisation.
+[![arXiv](https://img.shields.io/badge/arXiv-PAPER_ID-b31b1b)](ARXIV_URL)
+[![Project Page](https://img.shields.io/badge/Project-Page-orange)](https://iridescentjiang.github.io/HiReFF/)
 
-<p align="center">
-  <strong><a href="#-environment-setup">Environment</a></strong> ·
-  <strong><a href="#-model-inference">Inference</a></strong> ·
-  <strong><a href="#-model-training">Training</a></strong> ·
-  <strong><a href="#-citation">Citation</a></strong>
-</p>
+Official PyTorch implementation for the paper:
+
+> **[HiReFF: High-Resolution Feedforward Human Reconstruction from Uncalibrated Sparse-View Video](ARXIV_URL) [ECCV 2026]**
+
+[Yiming Jiang](https://scholar.google.com.hk/citations?user=gqaK3igAAAAJ&hl=zh-CN)<sup>&#x2606;</sup>,
+[Hanzhang Tu](https://scholar.google.com.hk/citations?user=0S0lNhUAAAAJ&hl=zh-CN&oi=ao),
+[Wenfeng Song](https://scholar.google.com.hk/citations?user=BDfZbbEAAAAJ&hl=zh-CN),
+[Siyou Lin](https://scholar.google.com.hk/citations?user=XBzr0pkAAAAJ&hl=zh-CN&oi=ao),
+[Liang An](https://scholar.google.com.hk/citations?user=s0T1w0gAAAAJ&hl=zh-CN&oi=sra),
+[Shuai Li](https://scholar.google.com.hk/citations?user=hn0KFx8AAAAJ&hl=zh-CN),
+[Aimin Hao](https://research.buaa.edu.cn/en/persons/aimin-hao/)<sup>&#x2709;</sup>,
+[Yebin Liu](https://scholar.google.com.hk/citations?user=ogXIdlYAAAAJ&hl=zh-CN)
+
+> <sup>&#x2606;</sup> Work done during an internship at Tsinghua University. &nbsp; <sup>&#x2709;</sup> Corresponding author. Email: jiangyimingjym@buaa.edu.cn ham@buaa.edu.cn liuyebin@tsinghua.edu.cn
+
+![Teaser](static/images/teaser.png)
+
+> **HiReFF** is a feed-forward method for 2K-resolution 360° human video reconstruction from uncalibrated sparse-view videos. Taking only four views separated by 90° as input, it reconstructs temporally consistent 3D Gaussians in a streaming fashion at 3.01 FPS on a single RTX 4090 GPU, and achieves 2K resolution with only 34% additional VRAM during training compared to 0.5K.
+
+## The Pipeline of Our Method
+
+![Pipeline](static/images/pipeline.png)
+
+> **HiReFF** decomposes 4D human reconstruction into two key tasks: foreground 3D Gaussian reconstruction from uncalibrated sparse-view videos and computationally efficient high-resolution synthesis. It employs Scale-synchronized Camera Calibration to resolve metric scale ambiguity, Gaussian-wise Foreground Masking to reconstruct clean foregrounds, and High-resolution Side-tuning for efficient 2K rendering.
 
 ---
 
@@ -91,7 +106,7 @@ Processes NPZ sequences or directories of images and outputs MP4 videos with smo
 ```bash
 python infer_video.py \
     --data-root ./wild_images \
-    --checkpoint-path ./checkpoints/8_view_input.pt \
+    --checkpoint-path ./checkpoints/checkpoint_dna_mvh_zju.pt \
     --input-views 0,3,5,8 \
     --inter-view 30 \
     --fps 18 \
@@ -206,10 +221,14 @@ This project is licensed under CC BY-NC 4.0 — see [LICENSE](LICENSE) for detai
 ##  Citation
 
 ```bibtex
-@article{wang2025vggt,
-  title={VGGT: Visual Geometry Grounded Transformer},
-  author={Wang, Jianyuan and others},
-  journal={arXiv preprint},
-  year={2025}
+@inproceedings{jiang2026hireff,
+  title     = {HiReFF: High-Resolution Feedforward Human Reconstruction from Uncalibrated Sparse-View Video},
+  author    = {Yiming Jiang and Hanzhang Tu and Wenfeng Song and Siyou Lin and Liang An and Shuai Li and Aimin Hao and Yebin Liu},
+  booktitle = {European Conference on Computer Vision (ECCV)},
+  year      = {2026},
 }
 ```
+
+##  Acknowledgement
+
+We gratefully acknowledge the authors of [VGGT](https://github.com/facebookresearch/vggt) and [AnySplat](https://github.com/AnySplat/AnySplat) for making their code publicly available. Any third-party packages are owned by their respective authors and must be used under their respective licenses.
