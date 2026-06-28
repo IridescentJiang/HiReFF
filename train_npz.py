@@ -347,12 +347,6 @@ def initialize_model(config, rank):
                 for param in model.activate_depth_head.parameters():
                     param.requires_grad = True
 
-    # if hasattr(model, 'point_offset_head'):
-    #     if model.point_offset_head is not None:
-    #         # 解冻point_offset_head的所有参数
-    #         for param in model.point_offset_head.parameters():
-    #             param.requires_grad = True
-
     if hasattr(model, 'gs_para_head'):
         if config.gs_para_head_activate:
             for param in model.gs_para_head.parameters():
@@ -380,7 +374,6 @@ def initialize_model(config, rank):
             {"params": model.aggregator.parameters(), "lr": config.lr * lr_weights["aggregator"], "name": "aggregator"},
             {"params": model.camera_head.parameters(), "lr": config.lr * lr_weights["camera"], "name": "camera"},
             {"params": model.activate_depth_head.parameters(), "lr": config.lr * lr_weights["activate_depth_head"], "name": "activate_depth_head"},
-            # {"params": model.point_offset_head.parameters(), "lr": config.lr * lr_weights["point_offset"]},
             {"params": model.gs_para_head.parameters(), "lr": config.lr * lr_weights["gs_para"], "name": "gs_para"},
             {"params": model.mask_head.parameters(), "lr": config.lr * lr_weights["mask"], "name": "mask"},
         ],
@@ -482,12 +475,6 @@ class MultiTaskLoss(nn.Module):
         self.foreground_region_loss = foreground_region_loss
         self.distill_transformer_loss = distill_transformer_loss
         self.depth_consist_loss = depth_consist_loss
-        
-        # if cfg.distill_depth_loss_activate:
-        #     model_kwargs={"enable_camera": True, "enable_point": False, "enable_depth": True, "enable_track": False}
-        #     self.ref_vggt = VGGT_Ori.from_pretrained(
-        #         cfg.model_name, local_files_only=True, **model_kwargs
-        #     )
 
     def forward(self, preds, images, gs_depth, target, config: TrainingConfig):
         # 姿态编码损失
@@ -537,19 +524,7 @@ class MultiTaskLoss(nn.Module):
             )
         else:
             distill_depth_loss = torch.tensor(0.0, device=preds["masks"].device)
-        # if config.distill_depth_loss_activate:
-        #     with torch.amp.autocast(enabled=True, device_type="cuda", dtype=torch.bfloat16):
-        #         with torch.no_grad():
-        #             ref_depth = self.ref_vggt(target["images"])["depth"]
-        #             self.distill_depth_loss
-        #     _n_view = preds["depth"].shape[1]
-        #     distill_depth_loss, _ = self.distill_depth_loss(
-        #         preds["depth"].squeeze(-1), target["masks"].squeeze(2), ref_depth[:, :_n_view].squeeze(-1)
-        #     )
-        # else:
-        #     distill_depth_loss = 0.0
-            
-        # depth_consist_loss
+
         if config.depth_consist_loss_activate:
             depth_consist_loss, _ = self.depth_consist_loss(
                 gs_depth, target["masks_sp"], preds["depth"], loss_type="MSE"
@@ -595,7 +570,6 @@ class MultiTaskLoss(nn.Module):
             "mask": mask_loss.item() * mask_w,
             "fore_reg": foreground_region_loss.item() * foreground_region_w,
             "dis_depth": distill_depth_loss.item() * distill_depth_w,
-            # "dis_geo": distill_geo_loss.item() * distill_geometry_w,
             "depth_consist": depth_consist_loss.item() * depth_consist_w, 
             "color_dist": color_dist.item() * color_dist_w
         }
@@ -885,12 +859,6 @@ def train_epoch(model, loader, optimizer, scheduler, scaler, criterion, config, 
     avg_loss = total_loss / num_batches
     avg_metrics = {k: v / num_batches for k, v in metric_logger.items()}
 
-    # del loader
-
-    # # 强制垃圾回收
-    # gc.collect()
-    # torch.cuda.empty_cache()
-
     return avg_loss, avg_metrics
 
 
@@ -1013,7 +981,6 @@ def main_worker(rank, world_size, config, master_port=20008):
 
     # 初始化损失函数
     criterion = MultiTaskLoss(config).to(rank)
-    # model.activate_depth_head.load_state_dict(criterion.ref_vggt.depth_head.state_dict())
     
     # 使用DDP包装模型
     model = DDP(model,
@@ -1065,11 +1032,6 @@ def main_worker(rank, world_size, config, master_port=20008):
                     model, optimizer, scheduler, epoch,
                     f"checkpoints/best_model_epoch_{epoch}_loss_{val_loss:.4f}.pt"
                 )
-
-        # 保存插值渲染结果（只在主进程）
-        # if rank == 0 and epoch % config.render_interval == 0:
-        #     images = render_images_infer(model, val_loader, config, rank, inter_view=0, type="All")
-        #     save_rendered_images(images, save_path=f"{config.render_images_path}/inter_view", epoch=epoch)
 
         # 定期保存（只在主进程）
         if rank == 0 and epoch % config.save_interval == 0:
