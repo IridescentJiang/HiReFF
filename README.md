@@ -71,13 +71,13 @@ python -c "from vggt import VGGT; print('Install OK')"
 ### Checkpoints
 
 The model is initialised from the **VGGT-1B** pretrained weights (`facebook/VGGT-1B` on HuggingFace),
-then fine-tuned on human datasets. Download our fine-tuned checkpoint from ModelScope:
+then fine-tuned on human datasets.
 
-> ⚠️ **Uploading soon — check back shortly.**
+| Checkpoint | Description |
+|---|---|
+| `checkpoint_dna_mvh_zju.pt` | Fine-tuned on DNA-Rendering + ZJU-MoCap + MVHuman |
 
-| Checkpoint | Description | Download |
-|---|---|---|
-| `checkpoint_dna_mvh_zju.pt` | Fine-tuned on DNA-Rendering + ZJU-MoCap + MVHuman | [ModelScope](MODELSCOPE_CHECKPOINT_URL) |
+*Fine-tuned checkpoint available on ModelScope (link coming soon).*
 
 ### Available Scripts
 
@@ -159,14 +159,7 @@ Preprocessing scripts for converting from DNA-Rendering, ZJU-MoCap, and MVHuman
 datasets are provided in `preprocessing/`. See each subdirectory's `README.md`
 for instructions.
 
-A preprocessed sample is available on ModelScope:
-
-> ⚠️ **Uploading soon — check back shortly.**
-
-Download and extract under `data/`:
-```bash
-# Coming soon: wget <MODELSCOPE_DATA_URL> -O data.zip && unzip data.zip
-```
+A preprocessed sample dataset is available on ModelScope (link coming soon).
 
 See [docs/data_preparation.md](docs/data_preparation.md) for the full NPZ format specification.
 
