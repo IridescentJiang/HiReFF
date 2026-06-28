@@ -40,7 +40,6 @@ pip install -e .[gsplat,train]
 python -c "from vggt import VGGT; print('Install OK')"
 ```
 
-
 ---
 
 ##  Model Inference
@@ -57,16 +56,14 @@ Download pretrained checkpoints and place them under `checkpoints/`:
 
 ### Available Scripts
 
-All inference scripts are self-contained and use the shared utilities in
-`vggt/utils/inference_utils.py`.
+All inference scripts use `argparse` and share utilities in `vggt/utils/inference_utils.py`.
 
-#### 1. Multi-view Rendering (`infer_multiview.py`)
+#### 1. Multi-view Rendering (`infer.py`)
 
-The primary entry point. Given sparse input views, predicts Gaussians and
-renders novel views.
+The primary entry point. Given sparse input views, predicts Gaussians and renders novel views.
 
 ```bash
-python infer_multiview.py \
+python infer.py \
     --data-root ./test_data \
     --checkpoint-path ./checkpoints/checkpoint_dna_mvh_zju.pt \
     --input-views 25,1,13,37 \
@@ -74,22 +71,9 @@ python infer_multiview.py \
     --output-dir output/multiview
 ```
 
-#### 2. Single-Frame GT Comparison (`infer_frame.py`)
+#### 2. 360° Video Rendering (`infer_360_video.py`)
 
-Renders a specified target view alongside the ground-truth for comparison.
-
-```bash
-python infer_frame.py \
-    --data-root ./test_data \
-    --checkpoint-path ./checkpoints/checkpoint_finetune.pt \
-    --input-views 25,37,1,13 \
-    --target-view 25 \
-    --output-dir output/frame
-```
-
-#### 3. 360° Video Rendering (`infer_360_video.py`)
-
-Generates smooth camera trajectories with Slerp or orbital interpolation.
+Generates smooth camera trajectories with Slerp or orbital interpolation between anchor views.
 
 ```bash
 python infer_360_video.py \
@@ -101,9 +85,9 @@ python infer_360_video.py \
     --output-dir output/multiview
 ```
 
-#### 4. Video from Sequences (`infer_video.py`)
+#### 3. Video from Sequences (`infer_video.py`)
 
-Processes NPZ sequences or directories of images and outputs MP4 videos.
+Processes NPZ sequences or directories of images and outputs MP4 videos with smooth trajectory interpolation.
 
 ```bash
 python infer_video.py \
@@ -113,18 +97,6 @@ python infer_video.py \
     --inter-view 30 \
     --fps 18 \
     --output-dir output/videos
-```
-
-#### 5. Speed Benchmark (`infer_speed.py`)
-
-Measures model forward-pass and rendering FPS.
-
-```bash
-python infer_speed.py \
-    --data-root ./test_data \
-    --checkpoint-path ./checkpoints/checkpoint_dna_mvh_zju.pt \
-    --input-views 25,1,13,37 \
-    --warmup-steps 3
 ```
 
 ### Input Data Format
@@ -155,8 +127,7 @@ Training requires NPZ files with the same structure as inference, plus:
 - `mask` — PNG-encoded foreground mask
 - Directory layout: `{data_root}/{dna-rendering,zju-mocap,mvhuman}/{subject}/frame_XXXX.npz`
 
-See [docs/data_preparation.md](docs/data_preparation.md) for the full specification
-and example conversion scripts.
+See [docs/data_preparation.md](docs/data_preparation.md) for the full specification and example conversion scripts.
 
 ### Running Training
 
@@ -179,7 +150,7 @@ python train.py \
     --single-dataset mvhuman
 ```
 
-To control which GPUs to use, set `CUDA_VISIBLE_DEVICES`:
+To control which GPUs to use:
 
 ```bash
 CUDA_VISIBLE_DEVICES=0,1,2,3 python train.py --data-root /path/to/data
@@ -216,8 +187,10 @@ vggt/
   rendering/     — Gaussian splatting rendering (gsplat backend), pose interpolation
   training/      — Loss functions, LPIPS, dataset classes, training config
   utils/         — Pose encoding, geometry, depth unprojection, inference helpers
-infer_*.py       — Inference scripts (multiview, frame, video, 360, speed)
-train.py     — DDP training entry point
+infer.py         — Primary inference entry point
+infer_360_video.py — 360° multi-view rendering with camera interpolation
+infer_video.py   — Video rendering from NPZ sequences or image directories
+train.py         — DDP training entry point
 docs/            — Additional documentation
 ```
 
