@@ -1,20 +1,29 @@
 # HiReFF: High-Resolution Feedforward Human Reconstruction from Uncalibrated Sparse-View Video
 
-[![arXiv](https://img.shields.io/badge/arXiv-PAPER_ID-b31b1b)](ARXIV_URL)
-[![Project Page](https://img.shields.io/badge/Project-Page-orange)](https://iridescentjiang.github.io/HiReFF/)
+<p align="center">
+  <a href="ARXIV_URL"><img src="https://img.shields.io/badge/arXiv-PAPER_ID-b31b1b" alt="arXiv"></a>
+  <a href="https://iridescentjiang.github.io/HiReFF/"><img src="https://img.shields.io/badge/Project-Page-orange" alt="Project Page"></a>
+</p>
 
-Official PyTorch implementation for the paper:
+<p align="center">
+  Official PyTorch implementation for the paper:
+</p>
 
-> **[HiReFF: High-Resolution Feedforward Human Reconstruction from Uncalibrated Sparse-View Video](ARXIV_URL) [ECCV 2026]**
+<p align="center">
+  <strong>HiReFF: High-Resolution Feedforward Human Reconstruction from Uncalibrated Sparse-View Video</strong><br>
+  <em>ECCV 2026</em>
+</p>
 
-[Yiming Jiang](https://scholar.google.com.hk/citations?user=gqaK3igAAAAJ&hl=zh-CN)<sup>&#x2606;</sup>,
-[Hanzhang Tu](https://scholar.google.com.hk/citations?user=0S0lNhUAAAAJ&hl=zh-CN&oi=ao),
-[Wenfeng Song](https://scholar.google.com.hk/citations?user=BDfZbbEAAAAJ&hl=zh-CN),
-[Siyou Lin](https://scholar.google.com.hk/citations?user=XBzr0pkAAAAJ&hl=zh-CN&oi=ao),
-[Liang An](https://scholar.google.com.hk/citations?user=s0T1w0gAAAAJ&hl=zh-CN&oi=sra),
-[Shuai Li](https://scholar.google.com.hk/citations?user=hn0KFx8AAAAJ&hl=zh-CN),
-[Aimin Hao](https://research.buaa.edu.cn/en/persons/aimin-hao/)<sup>&#x2709;</sup>,
-[Yebin Liu](https://scholar.google.com.hk/citations?user=ogXIdlYAAAAJ&hl=zh-CN)
+<p align="center">
+  <a href="https://scholar.google.com.hk/citations?user=gqaK3igAAAAJ&hl=zh-CN">Yiming Jiang</a><sup>&#x2606;</sup> &nbsp;
+  <a href="https://scholar.google.com.hk/citations?user=0S0lNhUAAAAJ&hl=zh-CN&oi=ao">Hanzhang Tu</a> &nbsp;
+  <a href="https://scholar.google.com.hk/citations?user=BDfZbbEAAAAJ&hl=zh-CN">Wenfeng Song</a> &nbsp;
+  <a href="https://scholar.google.com.hk/citations?user=XBzr0pkAAAAJ&hl=zh-CN&oi=ao">Siyou Lin</a> &nbsp;
+  <a href="https://scholar.google.com.hk/citations?user=s0T1w0gAAAAJ&hl=zh-CN&oi=sra">Liang An</a> &nbsp;
+  <a href="https://scholar.google.com.hk/citations?user=hn0KFx8AAAAJ&hl=zh-CN">Shuai Li</a> &nbsp;
+  <a href="https://research.buaa.edu.cn/en/persons/aimin-hao/">Aimin Hao</a><sup>&#x2709;</sup> &nbsp;
+  <a href="https://scholar.google.com.hk/citations?user=ogXIdlYAAAAJ&hl=zh-CN">Yebin Liu</a>
+</p>
 
 > <sup>&#x2606;</sup> Work done during an internship at Tsinghua University. &nbsp; <sup>&#x2709;</sup> Corresponding author. Email: jiangyimingjym@buaa.edu.cn ham@buaa.edu.cn liuyebin@tsinghua.edu.cn
 
