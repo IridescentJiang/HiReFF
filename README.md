@@ -61,7 +61,7 @@ pip install torch==2.5.0 torchvision==0.20.0 --index-url https://download.pytorc
 pip install -e .[gsplat,train]
 
 # Verify
-python -c "from vggt import VGGT; print('Install OK')"
+python -c "from hireff import HiReFF; print('Install OK')"
 ```
 
 ---
@@ -79,7 +79,7 @@ then fine-tuned on human datasets.
 
 ### Available Scripts
 
-All inference scripts use `argparse` and share utilities in `vggt/utils/inference_utils.py`.
+All inference scripts use `argparse` and share utilities in `hireff/utils/inference_utils.py`.
 
 #### 1. Multi-view Rendering (`infer.py`)
 
@@ -208,8 +208,8 @@ tensorboard --logdir runs/
 ##  Project Structure
 
 ```
-vggt/
-  models/        — VGGT model, Aggregator (ViT + alternating attention)
+hireff/
+  models/        — HiReFF model, Aggregator (ViT + alternating attention)
   heads/         — Camera, depth, GS parameter, and mask prediction heads
   layers/        — Transformer blocks, attention, patch embedding, RoPE
   rendering/     — Gaussian splatting rendering (gsplat backend), pose interpolation

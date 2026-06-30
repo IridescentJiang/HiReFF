@@ -1,6 +1,6 @@
 [project]
 name = "hireff"
-description = "HiReFF: 4D Gaussian Human Reconstruction via VGGT"
+description = "HiReFF: High-Resolution Feedforward Human Reconstruction from Sparse-View Video"
 authors = [{name = "Jianyuan Wang", email = "jianyuan@robots.ox.ac.uk"}]
 requires-python = ">= 3.10"
 version = "0.1.0"
@@ -11,8 +11,8 @@ dependencies = [
     "einops",
     "safetensors",
     "opencv-python",
-    "torch>=2.0.0",
-    "torchvision>=0.15.0",
+    "torch>=2.0.0,<2.6",
+    "torchvision>=0.15.0,<0.21",
     "scipy",
     "imageio",
     "scikit-image",
@@ -29,4 +29,4 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["vggt*"]
+include = ["hireff*"]

@@ -20,8 +20,8 @@ import os
 
 import torch
 
-from vggt.rendering.render_image import adjust_transl, batch_render_images_my
-from vggt.utils.inference_utils import (
+from hireff.rendering.render_image import adjust_transl, batch_render_images_my
+from hireff.utils.inference_utils import (
     collect_npz_files,
     enforce_colorful_flat_gs,
     ensure_render_float32,
@@ -30,8 +30,8 @@ from vggt.utils.inference_utils import (
     read_dna_npz_entry,
     save_render_images,
 )
-from vggt.utils.load_fn import adjust_intrinsic_batch, convert_extrinsics_to_relative_tensor
-from vggt.utils.pose_enc import extri_intri_to_pose_encoding
+from hireff.utils.load_fn import adjust_intrinsic_batch, convert_extrinsics_to_relative_tensor
+from hireff.utils.pose_enc import extri_intri_to_pose_encoding
 
 
 def load_sample(
@@ -84,7 +84,7 @@ def run_model_on_npz(
     agg_input_size: int,
     input_size: int,
 ) -> tuple[dict, dict]:
-    """Run the VGGT model on a single NPZ file and return predictions + input data."""
+    """Run the HiReFF model on a single NPZ file and return predictions + input data."""
     data = load_sample(
         npz_path=npz_path,
         input_view_ids=input_view_ids,

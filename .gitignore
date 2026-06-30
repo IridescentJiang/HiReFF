@@ -17,6 +17,7 @@ runs/
 *.whl
 *.tar.bz2
 *.log
+CLAUDE.md
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

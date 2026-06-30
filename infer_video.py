@@ -26,8 +26,8 @@ import os
 import torch
 from torchvision.utils import save_image
 
-from vggt.rendering.render_image import batch_render_images_my, image_to_video, interpolate_pose
-from vggt.utils.inference_utils import (
+from hireff.rendering.render_image import batch_render_images_my, image_to_video, interpolate_pose
+from hireff.utils.inference_utils import (
     load_model,
     parse_view_ids,
     read_dna_npz_entry,
@@ -106,7 +106,7 @@ def _resize_images(images: torch.Tensor, input_size: int, agg_input_size: int) -
 
 
 def run_model(data: dict, model, device: str) -> dict:
-    """Run the VGGT model on pre-loaded data."""
+    """Run the HiReFF model on pre-loaded data."""
     images_lr = data["images_lr"].unsqueeze(0).to(device)
     images_hr = data["images_hr"].unsqueeze(0).to(device)
 

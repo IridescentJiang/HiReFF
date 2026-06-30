@@ -30,7 +30,7 @@ def predictions_to_ply(
         prediction_mode: str = "Predicted Pointmap"
 ) -> trimesh.Trimesh:
     """
-    Converts VGGT predictions to a PLY-formatted point cloud.
+    Converts HiReFF predictions to a PLY-formatted point cloud.
 
     Args:
         predictions (dict): Dictionary containing model predictions with keys:
@@ -51,15 +51,15 @@ def predictions_to_ply(
     Raises:
         ValueError: If input predictions structure is invalid
     """
-    # 参数校验
+    # Validate parameters
     if not isinstance(predictions, dict):
         raise ValueError("predictions must be a dictionary")
 
-    # 初始化配置
+    # Initialize configuration
     if conf_thres is None:
         conf_thres = 10.0
 
-    # 帧选择逻辑
+    # Frame selection logic
     selected_frame_idx = None
     if filter_by_frames.lower() != "all":
         try:
@@ -67,7 +67,7 @@ def predictions_to_ply(
         except (ValueError, IndexError):
             pass
 
-    # 选择预测分支
+    # Select prediction branch
     if "Pointmap" in prediction_mode:
         if "world_points" in predictions:
             points = predictions["world_points"]
@@ -79,32 +79,32 @@ def predictions_to_ply(
         points = predictions["world_points_from_depth"]
         conf = predictions.get("depth_conf", np.ones_like(points[..., 0]))
 
-    # 获取颜色数据
+    # Get color data
     images = predictions["images"]
 
-    # 天空分割掩码
+    # Sky segmentation mask
     if mask_sky and target_dir:
-        # 实现与原始函数相同的天空分割逻辑
-        # 此处省略具体实现以保持简洁
+        # Implement same sky segmentation logic as the original function
+        # Implementation omitted for brevity
         pass
 
-    # 帧筛选
+    # Frame filtering
     if selected_frame_idx is not None:
         points = points[selected_frame_idx][None]
         conf = conf[selected_frame_idx][None]
         images = images[selected_frame_idx][None]
 
-    # 重塑数据形状
+    # Reshape data
     vertices = points.reshape(-1, 3)
 
-    # 处理颜色格式
-    if images.ndim == 4 and images.shape[1] == 3:  # NCHW格式转换
+    # Process color format
+    if images.ndim == 4 and images.shape[1] == 3:  # NCHW format conversion
         colors = np.transpose(images, (0, 2, 3, 1)).reshape(-1, 3)
-    else:  # NHWC格式
+    else:  # NHWC format
         colors = images.reshape(-1, 3)
     colors = (colors * 255).astype(np.uint8)
 
-    # 应用置信度阈值
+    # Apply confidence threshold
     conf_flat = conf.reshape(-1)
     if conf_thres == 0.0:
         conf_threshold = 0.0
@@ -112,7 +112,7 @@ def predictions_to_ply(
         conf_threshold = np.percentile(conf_flat, conf_thres)
     mask = (conf_flat >= conf_threshold) & (conf_flat > 1e-5)
 
-    # 背景过滤
+    # Background filtering
     if mask_black_bg:
         black_mask = colors.sum(axis=1) >= 16
         mask &= black_mask
@@ -120,20 +120,20 @@ def predictions_to_ply(
         white_mask = ~((colors > 240).all(axis=1))
         mask &= white_mask
 
-    # 应用最终掩码
+    # Apply final mask
     vertices = vertices[mask]
     colors = colors[mask]
 
-    # 处理空数据情况
+    # Handle empty data case
     if vertices.size == 0:
         vertices = np.array([[0, 0, 0]])
         colors = np.array([[255, 255, 255]])
 
-    # 创建PLY对象
+    # Create PLY object
     ply_data = trimesh.Trimesh(
         vertices=vertices,
         vertex_colors=colors,
-        process=False  # 禁用自动处理以保持原始数据
+        process=False  # Disable auto-processing to preserve original data
     )
 
     return ply_data
@@ -150,7 +150,7 @@ def predictions_to_glb(
     prediction_mode="Predicted Pointmap",
 ) -> trimesh.Scene:
     """
-    Converts VGGT predictions to a 3D scene represented as a GLB file.
+    Converts HiReFF predictions to a 3D scene represented as a GLB file.
 
     Args:
         predictions (dict): Dictionary containing model predictions with keys:

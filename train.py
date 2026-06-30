@@ -22,17 +22,17 @@ from torch.utils.data import Subset
 
 from einops import rearrange
 
-from vggt.models.vggt import VGGT
-from vggt.training.train_config import TrainingConfig
-from vggt.training.data.datasets.dna_rendering_npz import DnaRenderingDatasetNpz, dna_collate_fn
-from vggt.training.data.datasets.zju_mocap_npz import ZjuMocapDatasetNpz
-from vggt.training.data.datasets.mvhuman_npz import MvHumanDatasetNpz
-from vggt.training.loss import camera_loss, mask_loss, distill_geometry_loss, distill_depth_loss, \
+from hireff.models.hireff_model import HiReFF
+from hireff.training.train_config import TrainingConfig
+from hireff.training.data.datasets.dna_rendering_npz import DnaRenderingDatasetNpz, dna_collate_fn
+from hireff.training.data.datasets.zju_mocap_npz import ZjuMocapDatasetNpz
+from hireff.training.data.datasets.mvhuman_npz import MvHumanDatasetNpz
+from hireff.training.loss import camera_loss, mask_loss, distill_geometry_loss, distill_depth_loss, \
     foreground_region_loss, distill_transformer_loss, depth_consist_loss
-from vggt.training.render_loss import RenderLoss
-from vggt.rendering.render_image import encode_poses, \
+from hireff.training.render_loss import RenderLoss
+from hireff.rendering.render_image import encode_poses, \
     save_rendered_images, adjust_transl, batch_render_images_my
-from vggt.utils.visualization import vis_depth_map
+from hireff.utils.visualization import vis_depth_map
 
 torch.backends.cudnn.benchmark = True
 
@@ -46,12 +46,12 @@ def setup(rank, world_size, master_port=20008):
 
 
 def cleanup():
-    """清理分布式环境"""
+    """Clean up distributed environment"""
     dist.destroy_process_group()
 
 
 def build_dataloaders_distributed(config, rank, world_size):
-    """构建分布式训练和验证数据加载器"""
+    """Build distributed training and validation data loaders"""
     def rebalance_datasets(datasets, dataset_names, mode: str, seed: int):
         if len(datasets) == 0:
             return datasets
@@ -186,16 +186,16 @@ def build_dataloaders_distributed(config, rank, world_size):
     else:
         raise ValueError(f"dataset_mode must be 'single' or 'mix', got: {config.dataset_mode}")
 
-    # 均匀抽取1/n数据
+    # Uniformly sample 1/n data
     if config.data_sample_rate is not None:
         total_size = len(train_set)
         subset_size = total_size // config.data_sample_rate
         indices = numpy.linspace(0, total_size - 1, subset_size, dtype=numpy.int64).tolist()
 
-        # 创建子集
+        # Create subset
         train_set = Subset(train_set, indices)
 
-    # 创建分布式采样器
+    # Create distributed sampler
     train_sampler = DistributedSampler(
         train_set,
         num_replicas=world_size,
@@ -212,7 +212,7 @@ def build_dataloaders_distributed(config, rank, world_size):
         drop_last=False
     )
 
-    # 创建数据加载器
+    # Create data loaders
     train_loader = DataLoader(
         train_set,
         batch_size=config.batch_size // world_size,
@@ -236,7 +236,7 @@ def build_dataloaders_distributed(config, rank, world_size):
 
 
 def unfreeze_last_n_layers(module_list, n=3):
-    """解冻模块列表中最后 n 层的参数"""
+    """Unfreeze the parameters of the last n layers in the module list"""
     if n == 0:
         return
     total_layers = len(module_list)
@@ -246,48 +246,48 @@ def unfreeze_last_n_layers(module_list, n=3):
 
 
 def freeze_module(module, optimizer):
-    """冻结模块参数并从优化器中移除"""
-    # 禁用参数梯度
+    """Freeze module parameters and remove from optimizer"""
+    # Disable parameter gradients
     for param in module.parameters():
         param.requires_grad = False
 
-    # 从优化器中移除冻结参数
+    # Remove frozen parameters from optimizer
     groups_to_remove = []
 
-    # 遍历所有参数组
+    # Iterate over all parameter groups
     for group_idx, param_group in enumerate(optimizer.param_groups):
-        # 创建新的参数列表（仅保留需要梯度的参数）
+        # Create new parameter list (keep only parameters that require gradients)
         new_params = []
         for param in param_group['params']:
             if param.requires_grad:
                 new_params.append(param)
 
         if new_params:
-            # 更新参数组
+            # Update parameter group
             param_group['params'] = new_params
         else:
-            # 标记为空组，待移除
+            # Mark as empty group, pending removal
             groups_to_remove.append(group_idx)
 
-    # 从后往前移除空组（避免索引变化）
+    # Remove empty groups from back to front (to avoid index changes)
     for group_idx in sorted(groups_to_remove, reverse=True):
         del optimizer.param_groups[group_idx]
 
 
 def unfreeze_module(module, optimizer, lr_scale=1.0, param_group_idx=None):
-    """解冻模块参数并添加到优化器"""
-    # 启用参数梯度
+    """Unfreeze module parameters and add to optimizer"""
+    # Enable parameter gradients
     for param in module.parameters():
         param.requires_grad = True
 
-    # 查找或创建参数组
+    # Find or create parameter group
     if param_group_idx is not None:
-        # 使用现有参数组
+        # Use existing parameter group
         param_group = optimizer.param_groups[param_group_idx]
-        # 添加参数
+        # Add parameters
         param_group['params'] = list(param_group['params']) + list(module.parameters())
     else:
-        # 创建新参数组
+        # Create new parameter group
         new_group = {
             "params": list(module.parameters()),
             "lr": optimizer.param_groups[0]["lr"] * lr_scale
@@ -296,9 +296,9 @@ def unfreeze_module(module, optimizer, lr_scale=1.0, param_group_idx=None):
 
 
 def initialize_model(config, rank):
-    """初始化模型和优化器"""
-    # 在模型初始化后添加参数冻结逻辑
-    model = VGGT.from_pretrained(config.model_name, local_files_only=True) if config.load_VGGT else VGGT.from_checkpoint(config.checkpoint)
+    """Initialize model and optimizer"""
+    # Add parameter freezing logic after model initialization
+    model = HiReFF.from_pretrained(config.model_name, local_files_only=True) if config.load_VGGT else HiReFF.from_checkpoint(config.checkpoint)
     model = model.to(rank)
 
     checkpoint = None
@@ -311,14 +311,14 @@ def initialize_model(config, rank):
         mask_head_dict = {}
         for key, value in checkpoint_state.items():
             if key.startswith("mask_head."):
-                # 移除"mask_head."前缀
+                # Remove "mask_head." prefix
                 new_key = key.replace("mask_head.", "")
                 mask_head_dict[new_key] = value
 
-        # 加载整个mask_head
+        # Load the entire mask_head
         model.mask_head.load_state_dict(mask_head_dict)
 
-    # 冻结所有参数
+    # Freeze all parameters
     for param in model.parameters():
         param.requires_grad = False
 
@@ -329,7 +329,7 @@ def initialize_model(config, rank):
                     if any(m in name for m in ["global", "frame"]):
                         param.requires_grad = True
 
-    # 解冻camera_head的所有参数
+    # Unfreeze all parameters of camera_head
     if hasattr(model, 'camera_head'):
         if model.camera_head is not None:
             if config.camera_head_activate:
@@ -338,11 +338,11 @@ def initialize_model(config, rank):
 
     if hasattr(model, 'activate_depth_head'):
         if model.activate_depth_head is not None:
-            # 将 depth_head 的状态字典复制到 activate_depth_head
+            # Copy depth_head state dict to activate_depth_head
             if hasattr(model, 'depth_head') and model.depth_head is not None and config.load_VGGT == True:
                 model.activate_depth_head.load_state_dict(model.depth_head.state_dict())
 
-            # 解冻activate_depth_head的所有参数
+            # Unfreeze all parameters of activate_depth_head
             if config.depth_head_activate:
                 for param in model.activate_depth_head.parameters():
                     param.requires_grad = True
@@ -352,7 +352,7 @@ def initialize_model(config, rank):
             for param in model.gs_para_head.parameters():
                 param.requires_grad = True
 
-    # 解冻mask_head的所有参数
+    # Unfreeze all parameters of mask_head
     if hasattr(model, 'mask_head'):
         if config.mask_head_activate:
             for param in model.mask_head.parameters():
@@ -390,30 +390,30 @@ def initialize_model(config, rank):
 
     apply_group_lrs_from_config()
 
-    T_total = config.epochs - config.warmup_epochs  # 总退火步数
+    T_total = config.epochs - config.warmup_epochs  # Total annealing steps
 
     def lr_lambda(epoch):
         current_step = epoch - config.warmup_epochs
-        # warmup阶段（你当前设为0，可直接跳过）
+        # Warmup phase (currently set to 0, can be skipped directly)
         if current_step < 0:
             return max(0.0, current_step / config.warmup_epochs) if config.warmup_epochs > 0 else 1.0
-        # 超过总步数，保持最小LR
+        # Exceeds total steps, maintain minimum LR
         if current_step >= T_total:
             return 0.5
-        # 标准余弦退火：从1.0平滑降到0.5
+        # Standard cosine annealing: smoothly decrease from 1.0 to 0.5
         return 0.5 * (1.0 + math.cos(math.pi * current_step / T_total))
 
-    # 5. 初始化Scheduler
+    # 5. Initialize Scheduler
     scheduler = torch.optim.lr_scheduler.LambdaLR(
         optimizer,
         lr_lambda=lr_lambda,
-        last_epoch=-1  # 从头训练设为-1，断点续训设为对应epoch数
+        last_epoch=-1  # Set to -1 for training from scratch, set to the corresponding epoch for resuming training
     )
 
     scaler = GradScaler(enabled=config.amp_enabled)
 
     resume_epoch = 0
-    # 仅当 load_VGGT=False（即从checkpoint构建模型）时恢复训练状态
+    # Only resume training state when load_VGGT=False (i.e., building the model from a checkpoint)
     should_resume_training_state = not bool(getattr(config, "load_VGGT", True))
 
     if isinstance(checkpoint, dict) and should_resume_training_state:
@@ -463,7 +463,7 @@ def initialize_model(config, rank):
 
 
 class MultiTaskLoss(nn.Module):
-    """多任务损失函数"""
+    """Multi-task loss function"""
 
     def __init__(self, cfg: TrainingConfig):
         super().__init__()
@@ -477,7 +477,7 @@ class MultiTaskLoss(nn.Module):
         self.depth_consist_loss = depth_consist_loss
 
     def forward(self, preds, images, gs_depth, target, config: TrainingConfig):
-        # 姿态编码损失
+        # Pose encoding loss
         if config.camera_loss_activate:
             camera_loss, camera_loss_dict = self.camera_loss(
                 preds["pose_enc_pre"], target, with_auc=False, loss_type="huber"
@@ -486,10 +486,10 @@ class MultiTaskLoss(nn.Module):
             camera_loss = torch.tensor(0.0, device=preds["masks"].device)
 
         camera_loss_max = getattr(config, "camera_loss_max_for_backward", None)
-        if camera_loss.item() > camera_loss_max:  # 避免姿态编码损失过大影响训练稳定性
+        if camera_loss.item() > camera_loss_max:  # Prevent pose encoding loss from being too large and affecting training stability
             return camera_loss * 0.0, {"camera": 0.0}
 
-        # 渲染损失
+        # Render loss
         if config.render_loss_activate:
             if target["sr_images"] is not None:
                 target_images = target["sr_images"]
@@ -501,7 +501,7 @@ class MultiTaskLoss(nn.Module):
         else:
             render_loss = torch.tensor(0.0, device=preds["images"].device)
 
-        # 掩膜损失
+        # Mask loss
         if config.mask_loss_activate:
             mask_loss, mask_loss_dict = self.mask_loss(
                 preds["masks"], target["masks"], loss_type="Dice+BCE"
@@ -509,7 +509,7 @@ class MultiTaskLoss(nn.Module):
         else:
             mask_loss = torch.tensor(0.0, device=preds["masks"].device)
 
-        # 前景范围损失
+        # Foreground region loss
         if config.foreground_region_loss_activate:
             foreground_region_loss, foreground_region_loss_dict = self.foreground_region_loss(
                 images, target["masks_sp"], loss_type="Dice+BCE"
@@ -517,7 +517,7 @@ class MultiTaskLoss(nn.Module):
         else:
             foreground_region_loss = torch.tensor(0.0, device=preds["masks"].device)
 
-        # 蒸馏深度损失
+        # Distillation depth loss
         if config.distill_depth_loss_activate:
             distill_depth_loss, distill_depth_loss_dict = self.distill_depth_loss(
                 preds["depth"], preds["masks"], preds["pseudo_label_depth"]
@@ -532,7 +532,7 @@ class MultiTaskLoss(nn.Module):
         else:
             depth_consist_loss = torch.tensor(0.0, device=preds["masks"].device)
 
-        # 蒸馏几何损失
+        # Distillation geometry loss
         if config.distill_geo_loss_activate:
             distill_geo_loss, distill_geo_loss_dict = self.distill_geo_loss(
                 preds["world_points"], preds["masks"], preds["pseudo_label_points"], loss_type="chamfer+uniform"
@@ -547,7 +547,7 @@ class MultiTaskLoss(nn.Module):
         else:
             color_dist = torch.tensor(0.0, device=preds["masks"].device)
 
-        # 总损失加权求和
+        # Weighted sum of total loss
             
         render_w = 5.0
         camera_w = 1e2
@@ -563,7 +563,7 @@ class MultiTaskLoss(nn.Module):
                      + distill_depth_loss * distill_depth_w + distill_geo_loss * distill_geometry_w + \
                      depth_consist_loss * depth_consist_w + color_dist * color_dist_w
 
-        # 记录各项损失（不带梯度）
+        # Log individual losses (without gradient)
         loss_dict = {
             "camera": camera_loss.item() * camera_w,
             "render": render_loss.item() * render_w,
@@ -578,7 +578,7 @@ class MultiTaskLoss(nn.Module):
 
 
 def preprocess_data(data, lr_size, rank):
-    # 数据加载到设备
+    # Load data to device
     device = rank
     
     n_batch = len(data["image_bytes"])
@@ -671,7 +671,7 @@ def preprocess_data(data, lr_size, rank):
 
 
 def forward_render_and_loss(model, targets, criterion, config, epoch, device, with_model_grad=True):
-    """统一 train/val 的前向、渲染与损失计算流程，避免逻辑漂移"""
+    """Unified train/val forward, rendering and loss computation pipeline to avoid logic drift"""
     use_gt_mask = epoch <= config.use_gt_mask_until_epoch
 
     forward_context = torch.enable_grad() if with_model_grad else torch.no_grad()
@@ -748,16 +748,16 @@ def forward_render_and_loss(model, targets, criterion, config, epoch, device, wi
 
 
 def train_epoch(model, loader, optimizer, scheduler, scaler, criterion, config, epoch, sampler, rank, writer=None):
-    """单个训练epoch"""
+    """Single training epoch"""
     model.train()
-    sampler.set_epoch(epoch)  # 设置采样器epoch
+    sampler.set_epoch(epoch)  # Set sampler epoch
     total_loss = 0.0
     metric_logger = {"camera": 0.0, "render": 0.0, "mask": 0.0, "fore_reg": 0.0, "dis_depth": 0.0,
-                     "dis_geo": 0.0, "depth_consist": 0.0,  "color_dist": 0.0}  # 完整指标初始化
+                     "dis_geo": 0.0, "depth_consist": 0.0,  "color_dist": 0.0}  # Full metric initialization
 
     for batch_idx, batch in tqdm(enumerate(loader)):
 
-        # 数据加载到设备
+        # Load data to device
         device = rank
         targets = preprocess_data(batch, config.img_size, rank)
         batch_loss, loss_components, rendered_images, render_depths, preds, targets = forward_render_and_loss(
@@ -789,40 +789,40 @@ def train_epoch(model, loader, optimizer, scheduler, scaler, criterion, config, 
                     batch_idx,
                 )
 
-        # 反向传播
+        # Backpropagation
         scaler.scale(batch_loss).backward()
 
-        # 在反向传播后添加
+        # Add after backpropagation
         for param in model.parameters():
             if param.grad is not None:
-                # 确保梯度是连续的
+                # Ensure gradient is contiguous
                 param.grad = param.grad.contiguous()
 
-        # 梯度裁剪
+        # Gradient clipping
         if config.grad_clip > 0:
             scaler.unscale_(optimizer)
 
             torch.nn.utils.clip_grad_norm_(
-                filter(lambda p: p.requires_grad, model.parameters()),  # 只裁剪可训练参数
+                filter(lambda p: p.requires_grad, model.parameters()),  # Only clip trainable parameters
                 max_norm=config.grad_clip,
-                error_if_nonfinite=False  # 捕捉梯度异常
+                error_if_nonfinite=False  # Catch gradient anomalies
             )
 
-        # 参数更新
+        # Parameter update
         scaler.step(optimizer)
         scaler.update()
 
-        # 梯度清零
+        # Zero out gradients
         optimizer.zero_grad(set_to_none=True)
 
         value_loss = batch_loss.item()
 
-        # 记录损失
+        # Log loss
         total_loss += value_loss
         for k in metric_logger:
-            metric_logger[k] += loss_components.get(k, 0.0)  # 处理可能缺失的指标
+            metric_logger[k] += loss_components.get(k, 0.0)  # Handle potentially missing metrics
 
-        # 每个iter写入TensorBoard（仅主进程）
+        # Write to TensorBoard every iteration (main process only)
         if rank == 0 and writer is not None:
             global_step = (epoch - 1) * len(loader) + batch_idx
             writer.add_scalar('Iter/Loss/total', value_loss, global_step)
@@ -830,7 +830,7 @@ def train_epoch(model, loader, optimizer, scheduler, scaler, criterion, config, 
             for metric_name, metric_value in loss_components.items():
                 writer.add_scalar(f'Iter/Loss/{metric_name}', metric_value, global_step)
 
-        # 按iter保存checkpoint（仅主进程）
+        # Save checkpoint by iteration (main process only)
         if (
             rank == 0
             and getattr(config, "iter_save_interval", 0) > 0
@@ -844,7 +844,7 @@ def train_epoch(model, loader, optimizer, scheduler, scaler, criterion, config, 
                 f"checkpoints/checkpoint_epoch_{epoch}_iter_{batch_idx + 1}_loss_{value_loss:.4f}.pt",
             )
 
-        # 优化日志输出（只在主进程）
+        # Optimize log output (main process only)
         if rank == 0 and batch_idx % 10 == 0:
             log_msg = f"Epoch {epoch} | Batch {batch_idx}/{len(loader)}"
             log_msg += f" | Loss: {value_loss:.4f}"
@@ -854,8 +854,8 @@ def train_epoch(model, loader, optimizer, scheduler, scaler, criterion, config, 
 
         # del batch_loss
 
-    # 计算平均损失
-    num_batches = max(len(loader), 1)  # 处理空loader情况
+    # Compute average loss
+    num_batches = max(len(loader), 1)  # Handle empty loader case
     avg_loss = total_loss / num_batches
     avg_metrics = {k: v / num_batches for k, v in metric_logger.items()}
 
@@ -863,11 +863,11 @@ def train_epoch(model, loader, optimizer, scheduler, scaler, criterion, config, 
 
 
 def validate(model, loader, criterion, config, epoch, rank, sampler=None):
-    """验证循环"""
+    """Validation loop"""
     model.eval()
     total_loss = 0.0
     metric_logger = {"camera": 0.0, "render": 0.0, "mask": 0.0, "fore_reg": 0.0, "dis_depth": 0.0,
-                     "dis_geo": 0.0, "depth_consist": 0.0}  # 完整指标初始化
+                     "dis_geo": 0.0, "depth_consist": 0.0}  # Full metric initialization
 
     if sampler is not None:
         sampler.set_epoch(epoch)
@@ -875,7 +875,7 @@ def validate(model, loader, criterion, config, epoch, rank, sampler=None):
     num_batches = 0
 
     for batch_idx, batch in enumerate(loader):
-        # 数据加载到设备（强制设备转换）
+        # Load data to device (force device transfer)
         device = rank
 
         targets = preprocess_data(batch, config.img_size, rank)
@@ -884,7 +884,7 @@ def validate(model, loader, criterion, config, epoch, rank, sampler=None):
             model, targets, criterion, config, epoch, device, with_model_grad=False
         )
 
-        # 只在主进程保存渲染图像
+        # Only save rendered images on main process
         if rank == 0 and batch_idx % 20 == 0:
             if config.depth_consist_loss_activate:
                 vis_depth = vis_depth_map(render_depths, preds["render_masks"])
@@ -900,12 +900,12 @@ def validate(model, loader, criterion, config, epoch, rank, sampler=None):
         value_loss = batch_loss.item()
         num_batches += 1
 
-        # 累加损失和指标
+        # Accumulate loss and metrics
         total_loss += value_loss
         for k in metric_logger:
-            metric_logger[k] += loss_components.get(k, 0.0)  # 安全获取指标
+            metric_logger[k] += loss_components.get(k, 0.0)  # Safely get metrics
 
-        # 验证阶段日志（只在主进程）
+        # Validation stage log (main process only)
         if rank == 0 and batch_idx % 20 == 0:
             log_msg = f"Val Batch {batch_idx}/{len(loader)}"
             log_msg += f" | Loss: {value_loss:.4f}"
@@ -928,25 +928,25 @@ def validate(model, loader, criterion, config, epoch, rank, sampler=None):
 
 
 def save_checkpoint(model, optimizer, scheduler, epoch, save_path):
-    """保存训练状态（修复优化器状态问题）"""
-    # 获取当前可训练参数的ID集合
+    """Save training state (fix optimizer state issues)"""
+    # Get the ID set of currently trainable parameters
     trainable_ids = {id(p) for p in model.parameters() if p.requires_grad}
 
-    # 复制优化器状态
+    # Copy optimizer state
     optimizer_state = optimizer.state_dict()
 
-    # 创建新的优化器状态
+    # Create new optimizer state
     new_optimizer_state = {
         "state": {},
         "param_groups": optimizer_state["param_groups"]
     }
 
-    # 过滤状态：只保留当前可训练参数的状态
+    # Filter state: only keep state of currently trainable parameters
     for param_id, state in optimizer_state["state"].items():
         if param_id in trainable_ids:
             new_optimizer_state["state"][param_id] = state
 
-    # 保存检查点
+    # Save checkpoint
     state = {
         "epoch": epoch,
         "model_state": model.module.state_dict() if isinstance(model, DDP) else model.state_dict(),
@@ -955,7 +955,7 @@ def save_checkpoint(model, optimizer, scheduler, epoch, save_path):
     }
 
     torch.save(state, save_path)
-    print(f"检查点已保存至 {save_path}")
+    print(f"Checkpoint saved to {save_path}")
 
 
 def main_worker(rank, world_size, config, master_port=20008):
@@ -965,7 +965,7 @@ def main_worker(rank, world_size, config, master_port=20008):
     torch.random.manual_seed(100019 + rank)
     numpy.random.seed(100019 + rank)
 
-    # 只在主进程初始化TensorBoard
+    # Initialize TensorBoard only on main process
     writer = None
     if rank == 0:
         project_root = os.path.dirname(os.path.abspath(__file__))
@@ -973,16 +973,16 @@ def main_worker(rank, world_size, config, master_port=20008):
         writer = SummaryWriter(log_dir=tb_log_dir)
         print(f"TensorBoard log dir: {tb_log_dir}")
 
-    # 构建数据加载器
+    # Build data loaders
     train_loader, val_loader, train_sampler, val_sampler = build_dataloaders_distributed(config, rank, world_size)
 
-    # 初始化模型
+    # Initialize model
     model, optimizer, scheduler, scaler, resume_epoch = initialize_model(config, rank)
 
-    # 初始化损失函数
+    # Initialize loss function
     criterion = MultiTaskLoss(config).to(rank)
-    
-    # 使用DDP包装模型
+
+    # Wrap model with DDP
     model = DDP(model,
                 device_ids=[rank],
                 output_device=rank,
@@ -997,34 +997,34 @@ def main_worker(rank, world_size, config, master_port=20008):
     if rank == 0 and start_epoch > 1:
         print(f"Resume training from epoch {start_epoch} (checkpoint epoch: {resume_epoch})")
 
-    # 训练循环
+    # Training loop
     for epoch in range(start_epoch, config.epochs + 1):
         config.current_epoch = epoch
         start_time = time.time()
 
-        # 学习率预热
+        # Learning rate warmup
         if epoch <= config.warmup_epochs:
             lr_scale = min(1.0, epoch / config.warmup_epochs)
             for param_group in optimizer.param_groups:
                 param_group["lr"] = config.lr * lr_scale
 
-        # 训练阶段
+        # Training phase
         train_loss, train_metrics = train_epoch(
             model, train_loader, optimizer, scheduler, scaler, criterion, config, epoch, train_sampler, rank, writer
         )
 
-        # 验证阶段（所有进程参与，主进程记录）
+        # Validation phase (all processes participate, main process logs)
         did_validate = (epoch % config.val_interval == 0)
         if did_validate:
             val_loss, val_metrics = validate(model, val_loader, criterion, config, epoch, rank, val_sampler)
         else:
             val_loss = best_val_loss
 
-        # 更新学习率
+        # Update learning rate
         if epoch > config.warmup_epochs:
             scheduler.step()
 
-        # 保存最佳模型（只在主进程）
+        # Save best model (main process only)
         if rank == 0 and epoch % config.val_interval == 0:
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
@@ -1033,14 +1033,14 @@ def main_worker(rank, world_size, config, master_port=20008):
                     f"checkpoints/best_model_epoch_{epoch}_loss_{val_loss:.4f}.pt"
                 )
 
-        # 定期保存（只在主进程）
+        # Periodic save (main process only)
         if rank == 0 and epoch % config.save_interval == 0:
             save_checkpoint(
                 model, optimizer, scheduler, epoch,
                 f"checkpoints/checkpoint_epoch_{epoch}_loss_{val_loss:.4f}.pt"
             )
 
-        # 打印日志（只在主进程）
+        # Print log (main process only)
         if rank == 0:
             epoch_time = time.time() - start_time
             mask_mode = "GT" if epoch <= config.use_gt_mask_until_epoch else "Pred"
@@ -1053,7 +1053,7 @@ def main_worker(rank, world_size, config, master_port=20008):
             if did_validate:
                 writer.add_scalar('Loss/val', val_loss, epoch)
             writer.add_scalar('Learning Rate', optimizer.param_groups[0]['lr'], epoch)
-            # 记录所有训练指标
+            # Log all training metrics
             for metric_name, metric_value in train_metrics.items():
                 writer.add_scalar(f'Train Metrics/{metric_name}', metric_value, epoch)
 
@@ -1063,10 +1063,10 @@ def main_worker(rank, world_size, config, master_port=20008):
                     writer.add_scalar(f'Val Metrics/{metric_name}', metric_value, epoch)
             print("-" * 50)
 
-    # 清理分布式环境
+    # Clean up distributed environment
     cleanup()
 
-    # 关闭TensorBoard写入器
+    # Close TensorBoard writer
     if rank == 0:
         writer.close()
 
@@ -1123,7 +1123,7 @@ def main():
         config.val_interval = args.val_interval
 
     # Second-phase init for derived fields
-    from vggt.training.train_config import TrainingConfig as TC
+    from hireff.training.train_config import TrainingConfig as TC
     # Re-trigger derived field computation
     if config.batch_size == 0:
         config.batch_size = 1 * config.gpus_num

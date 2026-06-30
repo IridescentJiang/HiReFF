@@ -1,0 +1,437 @@
+import itertools
+import json
+import logging
+import os
+import os.path as osp
+import random
+import zipfile
+
+import numpy as np
+import torch
+import torch.distributed as dist
+import torchvision
+from torch.utils.data import Dataset
+
+from hireff.utils.load_fn import adjust_intrinsic_batch, convert_extrinsics_to_relative_tensor
+
+
+def mvhuman_collate_fn(batch):
+	collated_batch = {
+		"image_bytes": [],
+		"masks": [],
+		"intrinsics": [],
+		"extrinsics": [],
+		"bg_color": [],
+		"supervise_image_bytes": [],
+		"supervise_masks": [],
+		"supervise_intrinsics": [],
+		"supervise_extrinsics": [],
+	}
+
+	for sample in batch:
+		collated_batch["image_bytes"].append(sample["image_bytes"])
+		collated_batch["bg_color"].append(sample["bg_color"])
+		collated_batch["masks"].append(sample["masks"])
+		collated_batch["intrinsics"].append(sample["intrinsics"])
+		collated_batch["extrinsics"].append(sample["extrinsics"])
+
+		collated_batch["supervise_image_bytes"].append(sample["supervise_image_bytes"])
+		collated_batch["supervise_masks"].append(sample["supervise_masks"])
+		collated_batch["supervise_intrinsics"].append(sample["supervise_intrinsics"])
+		collated_batch["supervise_extrinsics"].append(sample["supervise_extrinsics"])
+
+	collated_batch["bg_color"] = torch.stack(collated_batch["bg_color"], dim=0)[0]
+	collated_batch["masks"] = torch.stack(collated_batch["masks"], dim=0)
+	collated_batch["intrinsics"] = torch.stack(collated_batch["intrinsics"], dim=0)
+	collated_batch["extrinsics"] = torch.stack(collated_batch["extrinsics"], dim=0)
+	collated_batch["supervise_masks"] = torch.stack(collated_batch["supervise_masks"], dim=0)
+	collated_batch["supervise_intrinsics"] = torch.stack(collated_batch["supervise_intrinsics"], dim=0)
+	collated_batch["supervise_extrinsics"] = torch.stack(collated_batch["supervise_extrinsics"], dim=0)
+
+	return collated_batch
+
+
+def read_mvhuman_npz_entry(
+	npz_path: str,
+	view_ids: list[int],
+) -> tuple[list[torch.Tensor], torch.Tensor, torch.Tensor, torch.Tensor]:
+	image_bytes = []
+	masks = []
+	intrinsics = []
+	extrinsics = []
+
+	with np.load(npz_path, allow_pickle=True) as archive:
+		for view in view_ids:
+			data_key = f"view_{view:02d}"
+			if data_key not in archive:
+				raise KeyError(f"{data_key} not found in {npz_path}.")
+			entry = archive[data_key].item()
+
+			mask = torchvision.io.decode_image(
+				torch.from_numpy(entry["mask"]),
+				mode=torchvision.io.ImageReadMode.GRAY,
+			).float() / 255.0
+
+			image_bytes.append(torch.from_numpy(entry["image"]))
+			masks.append(mask)
+			intrinsics.append(torch.from_numpy(entry["intrinsic"]).to(dtype=torch.float32))
+			extrinsics.append(torch.linalg.inv(torch.from_numpy(entry["extrinsic"])).to(dtype=torch.float32))
+
+	return (
+		image_bytes,
+		torch.stack(masks, dim=0),
+		torch.stack(intrinsics, dim=0),
+		torch.stack(extrinsics, dim=0),
+	)
+
+
+class MvHumanDatasetNpz(Dataset):
+	def __init__(
+		self,
+		data_root: str,
+		min_frames: int = 1,
+		target_size: int = 2048,
+		sr_target_size: int = 2048,
+		frame_numbers: list[int] | None = None,
+		split: str = "train",
+		n_views_supervise: int = 2,
+	):
+		super().__init__()
+		self.data_root = data_root
+		self.sr_target_size = sr_target_size
+		self.split = split
+		self.frame_numbers = frame_numbers
+		self.samples = []
+		self.n_views_supervise = n_views_supervise
+		self.target_size = target_size
+		self.origin_width = 2048
+		self.origin_height = 2048
+
+		self._discover_samples(min_frames)
+
+		if len(self.samples) > 10:
+			split_idx = int(len(self.samples) * 0.95)
+			if split == "train":
+				self.samples = self.samples[:split_idx]
+			else:
+				self.samples = self.samples[split_idx:]
+
+		logging.info("Loaded %d valid samples for %s", len(self.samples), split)
+
+	@staticmethod
+	def _dist_rank_world() -> tuple[int, int]:
+		if dist.is_available() and dist.is_initialized():
+			return dist.get_rank(), dist.get_world_size()
+		return 0, 1
+
+	def _list_sequence_dirs(self) -> list[str]:
+		candidates = []
+		for name in sorted(os.listdir(self.data_root)):
+			seq_path = osp.join(self.data_root, name)
+			if not osp.isdir(seq_path):
+				continue
+			has_npz = any(f.startswith("frame_") and f.endswith(".npz") for f in os.listdir(seq_path))
+			if has_npz:
+				candidates.append(name)
+
+		if candidates:
+			return candidates
+
+		has_root_npz = any(
+			f.startswith("frame_") and f.endswith(".npz")
+			for f in os.listdir(self.data_root)
+		)
+		return [""] if has_root_npz else []
+
+	def _discover_samples(self, min_frames: int):
+		rank, world_size = self._dist_rank_world()
+		local_samples = []
+
+		seq_dirs = self._list_sequence_dirs()
+		if world_size > 1:
+			seq_dirs = seq_dirs[rank::world_size]
+
+		for seq_dir in seq_dirs:
+			seq_path = self.data_root if seq_dir == "" else osp.join(self.data_root, seq_dir)
+
+			cached_valid_frames = self._try_load_valid_frames_cache(seq_path, min_frames)
+			if cached_valid_frames is not None:
+				if len(cached_valid_frames) >= min_frames:
+					for frame in cached_valid_frames:
+						local_samples.append({"seq_dir": seq_dir, "frame": frame})
+				continue
+
+			if self.frame_numbers is not None:
+				frame_numbers = self.frame_numbers
+			else:
+				frame_numbers = sorted(
+					int(f.split("_")[1].split(".")[0])
+					for f in os.listdir(seq_path)
+					if f.startswith("frame_") and f.endswith(".npz")
+				)
+
+			valid_frames = []
+			key_list = ["mask", "image", "intrinsic", "extrinsic"]
+			for frame in frame_numbers:
+				npz_path = osp.join(seq_path, f"frame_{int(frame):04d}.npz")
+				if not osp.exists(npz_path):
+					continue
+
+				try:
+					with np.load(npz_path, allow_pickle=True) as archive:
+						available_views = self._extract_available_views_from_archive(archive)
+						primary_groups = self._build_primary_view_groups(available_views)
+						if not primary_groups:
+							continue
+
+						if self.n_views_supervise > 0:
+							supervise_groups = self._build_supervise_view_groups(available_views, primary_groups[0])
+							if not supervise_groups:
+								continue
+
+						valid = True
+						for view_group in primary_groups:
+							for view in view_group:
+								entry = archive[f"view_{view:02d}"].item()
+								if any(entry.get(key, None) is None for key in key_list):
+									valid = False
+									break
+							if not valid:
+								break
+				except (zipfile.BadZipFile, OSError, ValueError, EOFError):
+					logging.warning("Skip broken npz file: %s", npz_path)
+					continue
+
+				if valid:
+					valid_frames.append(frame)
+				else:
+					print(f"Invalid frame {frame} in sequence {seq_dir} due to missing/broken data.")
+
+			print(f"Rank {rank}: Valid sequence {seq_dir} at {seq_path}")
+
+			if len(valid_frames) >= min_frames:
+				self._save_valid_frames_cache(seq_path, min_frames, valid_frames)
+				for frame in valid_frames:
+					local_samples.append(
+						{
+							"seq_dir": seq_dir,
+							"frame": frame,
+						}
+					)
+
+		if world_size > 1:
+			gathered_samples = [None for _ in range(world_size)]
+			dist.all_gather_object(gathered_samples, local_samples)
+			self.samples = []
+			for part in gathered_samples:
+				self.samples.extend(part)
+			self.samples.sort(key=lambda x: (x["seq_dir"], x["frame"]))
+		else:
+			self.samples = local_samples
+
+		logging.info(
+			"Discovered %d valid samples (rank %d/%d, local %d)",
+			len(self.samples),
+			rank,
+			world_size,
+			len(local_samples),
+		)
+
+	def _validation_cache_path(self, seq_path: str) -> str:
+		return osp.join(seq_path, ".hireff_mvhuman_valid_frames_cache.json")
+
+	def _validation_cache_key(self, min_frames: int) -> dict:
+		return {
+			"version": 1,
+			"min_frames": int(min_frames),
+			"frame_numbers": self.frame_numbers,
+			"n_views_supervise": int(self.n_views_supervise),
+		}
+
+	def _try_load_valid_frames_cache(self, seq_path: str, min_frames: int) -> list[int] | None:
+		cache_path = self._validation_cache_path(seq_path)
+		if not osp.exists(cache_path):
+			return None
+
+		try:
+			with open(cache_path, "r", encoding="utf-8") as f:
+				payload = json.load(f)
+		except Exception:
+			return None
+
+		if payload.get("cache_key") != self._validation_cache_key(min_frames):
+			return None
+
+		valid_frames = payload.get("valid_frames")
+		if not isinstance(valid_frames, list):
+			return None
+
+		return [int(frame) for frame in valid_frames]
+
+	def _save_valid_frames_cache(self, seq_path: str, min_frames: int, valid_frames: list[int]):
+		cache_path = self._validation_cache_path(seq_path)
+		payload = {
+			"cache_key": self._validation_cache_key(min_frames),
+			"valid_frames": [int(frame) for frame in sorted(valid_frames)],
+		}
+		tmp_path = f"{cache_path}.tmp"
+		try:
+			with open(tmp_path, "w", encoding="utf-8") as f:
+				json.dump(payload, f, ensure_ascii=True)
+			os.replace(tmp_path, cache_path)
+		except Exception:
+			logging.exception("Failed to write validation cache: %s", cache_path)
+			if osp.exists(tmp_path):
+				os.remove(tmp_path)
+
+	@staticmethod
+	def _extract_available_views_from_archive(archive) -> list[int]:
+		available_views = []
+		for key in archive.files:
+			if key.startswith("view_") and len(key) == 7:
+				available_views.append(int(key[-2:]))
+		return sorted(available_views)
+
+	def _get_available_views(self, npz_path: str) -> list[int]:
+		with np.load(npz_path, allow_pickle=True) as archive:
+			return self._extract_available_views_from_archive(archive)
+
+	@staticmethod
+	def _build_primary_view_groups(available_views: list[int]) -> list[list[int]]:
+		available_set = set(available_views)
+		groups = []
+		for start in range(0, 4):
+			group = [start + 4 * step for step in range(4)]
+			if all(view in available_set for view in group):
+				groups.append(group)
+
+		if groups:
+			return groups
+
+		if len(available_views) >= 4:
+			return [sorted(random.sample(available_views, 4))]
+
+		return []
+
+	def _build_supervise_view_groups(self, available_views: list[int], primary_group: list[int]) -> list[list[int]]:
+		if self.n_views_supervise <= 0:
+			return []
+
+		available_set = set(available_views)
+
+		def opposite_view(view_id: int) -> int:
+			return (view_id + 8) % 16
+
+		pair_bases = []
+		for view in available_views:
+			opposite = opposite_view(view)
+			if opposite in available_set and view < opposite:
+				pair_bases.append(view)
+
+		if len(pair_bases) >= self.n_views_supervise:
+			pair_groups = []
+			for combo in itertools.combinations(pair_bases, self.n_views_supervise):
+				if len(combo) > 1 and max(combo) - min(combo) < 2:
+					continue
+
+				views = []
+				for base in combo:
+					views.extend([base, opposite_view(base)])
+				pair_groups.append(views)
+
+			different_pair_groups = [
+				group for group in pair_groups if set(group) != set(primary_group)
+			]
+			if different_pair_groups:
+				return different_pair_groups
+			if pair_groups:
+				return pair_groups
+
+		required_views = self.n_views_supervise * 2
+		if len(available_views) < required_views:
+			return []
+
+		all_combinations = itertools.combinations(available_views, required_views)
+		valid_combinations = [
+			list(combo)
+			for combo in all_combinations
+			if len(combo) == 1 or max(combo) - min(combo) >= 2
+		]
+
+		different_combinations = [
+			combo for combo in valid_combinations if set(combo) != set(primary_group)
+		]
+		return different_combinations if different_combinations else valid_combinations
+
+	def __len__(self):
+		return len(self.samples)
+
+	def __getitem__(self, idx):
+		sample = self.samples[idx % len(self.samples)]
+		return self.load_sample(sample["seq_dir"], sample["frame"])
+
+	def load_sample(self, seq_dir: str, frame: int):
+		base_path = self.data_root if seq_dir == "" else osp.join(self.data_root, seq_dir)
+		npz_path = osp.join(base_path, f"frame_{frame:04d}.npz")
+
+		available_views = self._get_available_views(npz_path)
+		view_groups = self._build_primary_view_groups(available_views)
+		if not view_groups:
+			raise ValueError(f"No valid primary view group in {npz_path}.")
+
+		view_group = random.choice(view_groups)
+		random.shuffle(view_group)
+
+		image_bytes, masks, intrinsics, extrinsics = read_mvhuman_npz_entry(npz_path, view_group)
+
+		adjusted_intrinsic = adjust_intrinsic_batch(
+			intrinsics,
+			self.origin_width,
+			self.origin_height,
+			self.target_size,
+			self.target_size,
+		)
+		relatived_extrinsics = convert_extrinsics_to_relative_tensor(extrinsics)
+
+		data = {
+			"image_bytes": image_bytes,
+			"masks": masks,
+			"intrinsics": adjusted_intrinsic,
+			"extrinsics": relatived_extrinsics,
+			"bg_color": torch.rand(3),
+		}
+
+		supervise_view_groups = self._build_supervise_view_groups(available_views, view_group)
+		if not supervise_view_groups and self.n_views_supervise > 0:
+			raise ValueError(f"No valid supervise view group in {npz_path}.")
+
+		if supervise_view_groups:
+			view_group_supervise = random.choice(supervise_view_groups)
+			random.shuffle(view_group_supervise)
+
+			sv_image_bytes, sv_masks, sv_intrinsics, sv_extrinsics = read_mvhuman_npz_entry(
+				npz_path,
+				view_group_supervise,
+			)
+			adjusted_sv_intrinsic = adjust_intrinsic_batch(
+				sv_intrinsics,
+				self.origin_width,
+				self.origin_height,
+				self.target_size,
+				self.target_size,
+			)
+
+			all_extrinsics = torch.cat([extrinsics, sv_extrinsics], dim=0)
+			relatived_all_extrinsics = convert_extrinsics_to_relative_tensor(all_extrinsics)
+			relatived_sv_extrinsics = relatived_all_extrinsics[-len(sv_extrinsics):]
+
+			data.update(
+				{
+					"supervise_image_bytes": sv_image_bytes,
+					"supervise_masks": sv_masks,
+					"supervise_intrinsics": adjusted_sv_intrinsic,
+					"supervise_extrinsics": relatived_sv_extrinsics,
+				}
+			)
+
+		return data
