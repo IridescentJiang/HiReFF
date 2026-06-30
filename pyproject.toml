@@ -1,0 +1,33 @@
+[project]
+name = "hireff"
+description = "HiReFF: High-Resolution Feedforward Human Reconstruction from Sparse-View Video"
+authors = [{name = "Yiming Jiang", email = "jiangyimingjym@buaa.edu.cn"}]
+license = {text = "MIT"}
+requires-python = ">= 3.10"
+version = "0.1.0"
+dependencies = [
+    "numpy",
+    "Pillow",
+    "huggingface_hub",
+    "einops",
+    "safetensors",
+    "opencv-python",
+    "torch>=2.0.0,<2.6",
+    "torchvision>=0.15.0,<0.21",
+    "scipy",
+    "imageio",
+    "scikit-image",
+    "timm",
+]
+
+[project.optional-dependencies]
+gsplat = ["gsplat>=1.0.0"]
+train = ["tensorboard", "tqdm"]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["hireff*"]
