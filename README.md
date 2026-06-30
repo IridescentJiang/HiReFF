@@ -215,11 +215,14 @@ This project is licensed under the MIT License — see [LICENSE](LICENSE) for de
 ##  Citation
 
 ```bibtex
-@inproceedings{jiang2026hireff,
-  title     = {HiReFF: High-Resolution Feedforward Human Reconstruction from Uncalibrated Sparse-View Video},
-  author    = {Yiming Jiang and Hanzhang Tu and Wenfeng Song and Siyou Lin and Liang An and Shuai Li and Aimin Hao and Yebin Liu},
-  booktitle = {European Conference on Computer Vision (ECCV)},
-  year      = {2026},
+@misc{jiang2026hireff,
+      title={HiReFF: High-Resolution Feedforward Human Reconstruction from Uncalibrated Sparse-View Video}, 
+      author={Yiming Jiang and Hanzhang Tu and Wenfeng Song and Siyou Lin and Liang An and Shuai Li and Aimin Hao and Yebin Liu},
+      year={2026},
+      eprint={2606.29333},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV},
+      url={https://arxiv.org/abs/2606.29333}, 
 }
 ```
 
