@@ -52,6 +52,45 @@ python -c "from hireff import HiReFF; print('Install OK')"
 
 ---
 
+##  Data Preparation
+
+### NPZ Format
+
+Both inference and training use **NPZ files** with the following structure:
+
+```
+frame_0000.npz
+  ├── view_00  (Python dict with keys: image, intrinsic, extrinsic, mask*)
+  ├── view_01
+  └── ...
+```
+
+Each view dict contains:
+- `image` — JPEG-encoded bytes (RGB)
+- `intrinsic` — 3×3 float32 camera intrinsic matrix
+- `extrinsic` — 4×4 float32 camera extrinsic matrix (camera-to-world)
+- `mask` — PNG-encoded foreground mask (**required for training only**)
+
+The directory layout for datasets:
+
+```
+{data_root}/{dna-rendering,zju-mocap,mvhuman}/{subject}/frame_XXXX.npz
+```
+
+See [docs/data_preparation.md](docs/data_preparation.md) for the full NPZ format specification.
+
+### Sample Data
+
+A preprocessed sample dataset is available on [ModelScope](https://www.modelscope.cn/models/IridescentJiang/HiReFF/tree/master/data_example).
+
+### Dataset Preprocessing
+
+Preprocessing scripts for converting raw DNA-Rendering, ZJU-MoCap, and MVHuman
+datasets to NPZ format are provided in `preprocessing/`. See each subdirectory's `README.md`
+for instructions.
+
+---
+
 ##  Model Inference
 
 ### Checkpoints
@@ -61,7 +100,7 @@ then fine-tuned on human datasets.
 
 | Checkpoint | Description | Download |
 |---|---|---|
-| `checkpoint_dna_mvh_zju.pt` | Fine-tuned on DNA-Rendering + ZJU-MoCap + MVHuman | coming soon |
+| `checkpoint_dna_mvh_zju.pt` | Fine-tuned on DNA-Rendering + ZJU-MoCap + MVHuman | [ModelScope](https://www.modelscope.cn/models/IridescentJiang/HiReFF/tree/master/checkpoint) |
 
 ### Available Scripts
 
@@ -94,44 +133,9 @@ python infer_video.py \
     --output-dir output/videos
 ```
 
-### Input Data Format
-
-Inference uses **NPZ files** with the following structure:
-
-```
-frame_0000.npz
-  ├── view_00  (Python dict with keys: image, intrinsic, extrinsic)
-  ├── view_01
-  └── ...
-```
-
-Each view dict contains:
-- `image` — JPEG-encoded bytes (RGB)
-- `intrinsic` — 3×3 float32 camera intrinsic matrix
-- `extrinsic` — 4×4 float32 camera extrinsic matrix (camera-to-world)
-
-See [docs/data_preparation.md](docs/data_preparation.md) for details.
-
 ---
 
 ##  Model Training
-
-### Data Preparation
-
-Training requires NPZ files with the same structure as inference, plus a `mask` key
-(PNG-encoded foreground mask). The directory layout is:
-
-```
-{data_root}/{dna-rendering,zju-mocap,mvhuman}/{subject}/frame_XXXX.npz
-```
-
-Preprocessing scripts for converting from DNA-Rendering, ZJU-MoCap, and MVHuman
-datasets are provided in `preprocessing/`. See each subdirectory's `README.md`
-for instructions.
-
-A preprocessed sample dataset is available on ModelScope (link coming soon).
-
-See [docs/data_preparation.md](docs/data_preparation.md) for the full NPZ format specification.
 
 ### Running Training
 
