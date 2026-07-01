@@ -67,8 +67,8 @@ frame_0000.npz
 
 Each view dict contains:
 - `image` — JPEG-encoded bytes (RGB)
-- `intrinsic` — 3×3 float32 camera intrinsic matrix
-- `extrinsic` — 4×4 float32 camera extrinsic matrix (camera-to-world)
+- `intrinsic` — 3×3 float32 camera intrinsic matrix (**required for training only**)
+- `extrinsic` — 4×4 float32 camera extrinsic matrix (camera-to-world) (**required for training only**)
 - `mask` — PNG-encoded foreground mask (**required for training only**)
 
 The directory layout for datasets:
@@ -85,9 +85,7 @@ A preprocessed sample dataset is available on [ModelScope](https://www.modelscop
 
 ### Dataset Preprocessing
 
-Preprocessing scripts for converting raw DNA-Rendering, ZJU-MoCap, and MVHuman
-datasets to NPZ format are provided in `preprocessing/`. See each subdirectory's `README.md`
-for instructions.
+Preprocessing scripts for converting raw DNA-Rendering, ZJU-MoCap, and MVHuman datasets to NPZ format are provided in `preprocessing/`. See each subdirectory's `README.md` for instructions.
 
 ---
 
